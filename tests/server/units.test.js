@@ -167,3 +167,24 @@ describe('vendored browser libraries (ADR-006)', () => {
     }
   });
 });
+
+describe('Pages config generation (ADR-006)', async () => {
+  const { configSource } = await import('../../scripts/write-config.js');
+
+  it('writes the server origin as a JSON string', () => {
+    assert.match(configSource('https://mafia-online.onrender.com/'), /export const SERVER_URL = "https:\/\/mafia-online\.onrender\.com";/);
+    assert.match(configSource(''), /export const SERVER_URL = "";/);
+    assert.match(configSource(undefined), /export const SERVER_URL = "";/);
+  });
+
+  it('refuses plain http outside localhost and malformed values', () => {
+    assert.throws(() => configSource('http://mafia.example'), /https/);
+    assert.throws(() => configSource('not a url'));
+    assert.match(configSource('http://localhost:3000'), /"http:\/\/localhost:3000"/);
+  });
+
+  it('keeps the committed config.js in its default, same-origin form', async () => {
+    const committed = await readFile(join(import.meta.dirname, '..', '..', 'public', 'config.js'), 'utf8');
+    assert.match(committed, /export const SERVER_URL = '';/);
+  });
+});

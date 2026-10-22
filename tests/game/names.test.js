@@ -22,7 +22,7 @@ describe('normalizeName', () => {
   it('drops markup, formatting symbols, control and bidi characters', () => {
     assert.equal(normalizeName('<b>Beto</b>'), 'bBetob');
     assert.equal(normalizeName('*Carla* _x_ ~y~ `z`'), 'Carla x y z');
-    assert.equal(normalizeName('Da\u0000n‮i​el\n'), 'Daniel');
+    assert.equal(normalizeName('Da\u0000n\u202Ei\u200Bel\n'), 'Daniel');
   });
 
   it('rejects empty, meaningless, too long or non-string names', () => {

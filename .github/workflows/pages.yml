@@ -1,0 +1,67 @@
+# Publishes the static client in public/ to GitHub Pages.
+# The game server URL comes from the repository variable SERVER_URL
+# (Settings → Secrets and variables → Actions → Variables).
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'public/**'
+      - 'scripts/write-config.js'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Write config.js with the server URL
+        run: node scripts/write-config.js
+        env:
+          SERVER_URL: ${{ vars.SERVER_URL }}
+
+      - name: Set up Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: public
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
