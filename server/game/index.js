@@ -7,3 +7,4 @@ export * from './day.js';
 export * from './night.js';
 export * from './victory.js';
 export * from './game.js';
+export * from './views.js';
