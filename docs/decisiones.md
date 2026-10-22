@@ -385,6 +385,18 @@ _Actualizado en la fase 2:_ se añadieron `room:leave`, `state:sync`, `seat:appr
 - **`pages.yml`:** se ejecuta en cada push a `main` que cambie `public/**`. Genera `config.js` y publica `public/` como artefacto de Pages.
 - **Configuración del repositorio:** Pages se activa con `build_type: "workflow"`.
 
+_Implementado en la fase 5:_
+- **Versiones de las acciones:** se usan las últimas publicadas, que son posteriores a las de los ejemplos de la guía de GitHub: `actions/checkout@v7`, `actions/setup-node@v7`, `actions/configure-pages@v6`, `actions/upload-pages-artifact@v5` y `actions/deploy-pages@v5`.
+  - En `checkout` v7, el cambio incompatible solo afecta a `pull_request_target`, que este proyecto no usa.
+  - En `setup-node` v7, el cambio incompatible es la eliminación del `NODE_AUTH_TOKEN` ficticio, y aquí no se publica en npm.
+- **Pruebas antes de publicar:** `pages.yml` también ejecuta las pruebas, para no publicar un cliente roto.
+- **`config.js`:** lo escribe `scripts/write-config.js` a partir de la variable del repositorio `SERVER_URL`. Solo acepta orígenes `https` (o `localhost`) y se escribe con `JSON.stringify`, nunca con `echo`.
+- **Servidor en Render (P3):** se configura con [`render.yaml`](../render.yaml) en el plan `free`.
+  - `PORT=10000` es el puerto por defecto de Render.
+  - La versión de Node sale de `.nvmrc`.
+  - `CORS_ORIGIN` se pide al crear el servicio (`sync: false`).
+- **Repositorio público (P1):** se hizo público en esta fase, después de revisar que no hubiera secretos ni datos personales.
+
 ### ADR-014: Idioma
 
 - **Decisión:**
