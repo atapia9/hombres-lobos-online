@@ -165,7 +165,13 @@ La guía de Pages todavía muestra ejemplos con versiones anteriores de las acci
 - `io.in(room).fetchSockets()` y `socket.disconnect(true)`
 - La opción `maxHttpBufferSize`, cuyo valor por defecto es 1e6 y que se reducirá (ver ADR-007).
 
-**Cliente de Socket.IO.** La documentación dice que el servidor sirve `/socket.io/socket.io.js`. También sirve `socket.io.esm.min.js`: ese archivo no aparece en la página de instalación del cliente, pero sí en la lista de archivos que sirve `socket.io@4.8.4` en su código fuente (`dist/index.js`). Ver ADR-006.
+**Cliente de Socket.IO.** La documentación dice que el servidor sirve `/socket.io/socket.io.js`. También sirve `socket.io.esm.min.js`: ese archivo no aparece en la página de instalación del cliente, pero sí en la lista de archivos que sirve `socket.io@4.8.4` en su código fuente (`dist/index.js`). Sin embargo, lo sirve sin cabeceras CORS, y por eso el cliente se copia en `public/vendor/` (ver ADR-006).
+
+**Verificado en la fase 2:**
+- La opción `allowRequest(req, callback)` rechaza con 403 los orígenes no permitidos.
+- `socket.use(([event, ...args], next) => …)` recibe el ack como último argumento: si no se llama a `next()`, el paquete se descarta.
+- El cliente ofrece `socket.timeout(ms).emitWithAck()` (desde la v4.6.0).
+- `import.meta.main` funciona en Node 24.
 
 **Reconexión.** No usaré `connectionStateRecovery`, porque sirve para cortes breves y no para cuando se cierra la pestaña. La reconexión se resuelve con un token propio (ADR-008).
 
@@ -268,48 +274,57 @@ LOBBY → DAWN (reconocimiento) → DAY ⇄ NIGHT → ENDED
 
 ### ADR-005: Contrato de eventos de Socket.IO
 
-Todos los eventos del cliente al servidor usan un ack que responde `{ ok: true, ... }` o `{ ok: false, error: "CODE" }`.
+Todos los eventos del cliente al servidor usan un ack que responde `{ ok: true, ... }` o `{ ok: false, error: "CODE" }`. Los eventos sin datos aceptan que no se envíe nada o que llegue `null`. Las claves desconocidas se descartan.
+
+_Actualizado en la fase 2:_ se añadieron `room:leave`, `state:sync`, `seat:approve`, `seat:reject`, `day:dismissAccusation` y `game:rematch`, y los avisos que el servidor envía a un solo socket.
 
 | Cliente → servidor | Quién | Datos |
 |---|---|---|
-| `room:create` | narrador | `{ mode }` → `{ code, narratorToken }` |
-| `narrator:resume` | narrador | `{ code, narratorToken }` |
-| `room:configure` | narrador | `{ mode, mafiaCount, showVotes, showScore }` |
-| `room:kick` | narrador | `{ playerId }` |
-| `room:join` | jugador | `{ code, name }` → `{ playerId, playerToken }` |
-| `room:rejoin` | jugador | `{ code, playerToken }` |
-| `game:start` | narrador | — |
-| `phase:advance` | narrador | `{ to }` |
+| `room:create` | narrador | `{ mode?, timeZone? }` → `{ code, narratorToken, state }` |
+| `narrator:resume` | narrador | `{ code, narratorToken }` → `{ state }` |
+| `room:configure` | narrador | `{ mode?, mafiaCount?, showVotes?, showScore? }` |
+| `room:kick` | narrador | `{ playerId }`: en el lobby expulsa; durante la partida retira (R12) |
+| `seat:approve`, `seat:reject` | narrador | `{ claimId }` (ver ADR-008) |
+| `room:join` | jugador | `{ code, name }` → `{ playerId, playerToken, state }` o, con la partida empezada, `{ pending: true, claimId }` |
+| `room:rejoin` | jugador | `{ code, playerToken }` → `{ playerId, state }` |
+| `room:leave` | jugador | — (solo en el lobby) |
+| `state:sync` | ambos | — → `{ state }` |
+| `game:start`, `game:end`, `game:rematch` | narrador | — |
+| `phase:advance` | narrador | `{ to: "day" \| "night" }` |
+| `timer:set` | narrador | `{ seconds }` (0 lo quita) |
 | `day:accuse` | jugador | `{ targetId }` |
-| `day:openVote` | narrador | `{ accusationId }` |
-| `day:vote` | jugador | `{ guilty }` |
-| `day:closeVote`, `day:confirm` | narrador | `{ accept }` |
+| `day:dismissAccusation`, `day:openVote` | narrador | `{ accusationId }` |
+| `day:vote` | jugador | `{ guilty: true \| false \| null }` (null retira el voto) |
+| `day:closeVote` | narrador | — |
+| `day:confirm` | narrador | `{ accept }` |
 | `night:request` | jugador | `{ wanted }` |
 | `night:submit` | jugador | `{ targetId \| null }` (null = Honesto) |
 | `night:ability` | jugador (clásico) | `{ targetId }` |
-| `timer:set` | narrador | `{ seconds }` |
-| `game:end` | narrador | — (termina sin ganador) |
 
-| Servidor → cliente | Destino |
-|---|---|
-| `state:public` | sala `room:<code>` |
-| `state:private` | solo el socket del dueño |
-| `state:narrator` | solo el socket del narrador |
+| Servidor → cliente | Destino | Contenido |
+|---|---|---|
+| `state:public` | sala `room:<code>` | `publicView` más el estado de conexión de cada jugador |
+| `state:private` | solo el socket del dueño | `{ code, me }`: únicamente los secretos de ese jugador |
+| `state:narrator` | solo el socket del narrador | `narratorView`, conexiones, reclamaciones de asiento y, al terminar, el resumen |
+| `seat:granted`, `seat:rejected` | quien reclamó un asiento | El token nuevo y el estado, o el rechazo |
+| `session:replaced` | la pestaña anterior | Se abrió la misma sesión en otra pestaña o dispositivo |
+| `room:kicked` | el jugador expulsado | — |
 
 ### ADR-006: Cliente en módulos ES, sin compilación
 
 - **Decisión:**
   - `public/config.js` exporta `SERVER_URL`. Si está vacío, el cliente usa el mismo origen, que es lo que pasa en local.
   - El parámetro `?server=https://…` tiene prioridad y se recuerda en `localStorage`. Solo se aceptan direcciones `https:`, o `http://localhost` en desarrollo.
-  - El cliente de Socket.IO se importa dinámicamente desde el servidor configurado: `import(\`${SERVER_URL}/socket.io/socket.io.esm.min.js\`)`. Así su versión siempre coincide con la del servidor.
+  - El cliente de Socket.IO se copia en `public/vendor/socket.io.esm.min.js` con `npm run vendor`. Una prueba comprueba que la copia es idéntica, byte a byte, a la versión instalada en `node_modules`.
   - Si el servidor está dormido, la página muestra "Conectando con el servidor…" y reintenta.
-- **Alternativa descartada por ahora:** copiar `socket.io-client` en `public/vendor/`. Es más robusta si el servidor no responde, pero obliga a sincronizar versiones a mano.
+- **Cambio en la fase 2:** la idea inicial era importar el cliente directamente del servidor (`import(\`${SERVER_URL}/socket.io/socket.io.esm.min.js\`)`). Al revisar el código fuente de `socket.io@4.8.4` vi que ese archivo se sirve sin la cabecera `Access-Control-Allow-Origin`, así que el navegador bloquearía el `import()` desde GitHub Pages. Por eso se adoptó la alternativa de copiarlo en `public/vendor/`.
 - **Despliegue:** en `pages.yml`, `config.js` se genera a partir de la variable del repositorio `SERVER_URL`, así que no queda ninguna URL fija en el código.
 
 ### ADR-007: Seguridad
 
 - **Validación de entradas:** validadores escritos a mano, sin dependencias.
-  - El código de sala tiene que cumplir `^[A-HJ-NP-Z2-9]{5}$`.
+  - El código de sala tiene que cumplir `^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$`. Se acepta escrito en minúsculas y con espacios alrededor. _Corrección de la fase 2:_ el patrón de la propuesta inicial, `[A-HJ-NP-Z2-9]`, dejaba pasar la L.
+  - Los ids de jugador los genera el servidor (`p` seguido de 16 caracteres hexadecimales) y nunca vienen del cliente.
   - El nombre se recorta, se normaliza a NFC, se le quitan los caracteres de control y debe tener entre 1 y 20 caracteres. No puede repetirse dentro de la sala, sin distinguir mayúsculas.
   - Los identificadores se buscan siempre en el estado de la sala.
 - **Límite de frecuencia:** un *token bucket* por socket, aplicado con `socket.use`, con ráfagas de 20 eventos y 5 eventos por segundo sostenidos. Si un socket lo excede de forma repetida, se desconecta.
@@ -323,7 +338,13 @@ Todos los eventos del cliente al servidor usan un ack que responde `{ ok: true, 
   - Al unirse, el jugador recibe un `playerToken` que se guarda en `localStorage` por sala.
   - Si cierra la pestaña y vuelve a entrar con el mismo código, `room:rejoin` le devuelve su rol y su estado. El socket anterior se desconecta.
   - Si perdió el token, por ejemplo porque cambió de navegador, el narrador puede "reasignar asiento" a la nueva conexión. Esto solo funciona con asientos desconectados.
-- **Por qué no se reconecta solo con el nombre:** cualquiera que escribiera ese nombre se quedaría con el rol.
+- **Cómo funciona la reasignación (fase 2):**
+  1. Con la partida empezada, el jugador entra con el código y su mismo nombre (sin distinguir mayúsculas).
+  2. Si ese asiento está desconectado, el servidor crea una reclamación y se la muestra al narrador.
+  3. Si el narrador la aprueba, el servidor genera un token nuevo, invalida el anterior y envía `seat:granted` con el rol y el estado.
+  4. Si el asiento está conectado, la respuesta es `SEAT_TAKEN`. Si el nombre no existe, es `GAME_IN_PROGRESS`.
+  5. La reclamación se descarta si quien la hizo se desconecta. Hay un máximo de 20 reclamaciones por sala.
+- **Por qué no se reconecta solo con el nombre:** cualquiera que escribiera ese nombre se quedaría con el rol. Por eso el narrador tiene que aprobarlo.
 
 ### ADR-009: Las salas viven en memoria
 
