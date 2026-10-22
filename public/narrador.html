@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mafia · Narrador</title>
+  <meta name="description" content="Pantalla del narrador de Mafia en línea: crea la sala, reparte los roles y dirige la partida.">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/narrator.css">
+  <script type="module" src="js/narrator.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <header class="topbar">
+    <p class="brand">Mafia <span>·</span> Narrador</p>
+    <div class="topbar-actions">
+      <span id="connection" class="pill" role="status"><span class="dot dot-warn"></span>Conectando…</span>
+      <button class="btn btn-ghost btn-small" type="button" data-open-rules>Reglas</button>
+    </div>
+  </header>
+
+  <main id="main" class="page">
+    <div class="grid grid-main-aside">
+      <div id="primary" class="stack">
+        <section class="card"><p class="muted">Cargando…</p></section>
+      </div>
+      <aside class="stack" aria-label="Sala, jugadores y reglas">
+        <div id="secondary" class="stack"></div>
+        <section id="rules" class="card"></section>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>Mafia es un juego creado por Dmitri Davýdov (concebido en 1986, primera partida documentada en 1987). Este proyecto no reclama ningún derecho sobre el juego.</p>
+    <p id="server-info" class="small"></p>
+  </footer>
+
+  <div id="announcer" class="visually-hidden" aria-live="polite"></div>
+  <div id="toasts" class="toasts"></div>
+  <noscript><p class="page">Esta página necesita JavaScript.</p></noscript>
+</body>
+</html>
