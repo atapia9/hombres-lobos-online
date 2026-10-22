@@ -387,7 +387,11 @@ function nightContent(s, nameOf) {
     }
   };
 
+  // Only the steps of roles that are in this game (the wolves always are).
+  const { counts } = s.derived.composition;
+  const inGame = (key) => key === 'wolves' || (counts[key] ?? 0) > 0;
   const steps = h('ol', { class: 'steps', 'aria-label': 'Orden de la noche' }, NIGHT_ORDER.map((key, i) => {
+    if (!inGame(key)) return null;
     const state = i < currentIndex ? 'is-done' : i === currentIndex ? 'is-current' : '';
     const skipped = night.skipped.includes(key);
     const detail = stepDetail(key);
@@ -561,7 +565,7 @@ function voteBlock(s, nameOf) {
 
   return h('div', { class: 'vote-box', role: 'region', 'aria-labelledby': 'vote-title' },
     h('h2', { id: 'vote-title', text: `Votación entre: ${vote.candidateIds.map(nameOf).join(', ')}` }),
-    h('p', { text: `Han votado ${live.votedCount} de ${live.eligibleCount}. El Alcalde cuenta doble en estos totales.` }),
+    h('p', { text: `Han votado ${live.votedCount} de ${live.eligibleCount}.${s.derived.composition.counts.mayor ? ' El Alcalde cuenta doble en estos totales.' : ''}` }),
     h('label', { class: 'switch' },
       h('input', { type: 'checkbox', checked: ui.showLiveVotes, dataset: { key: 'show-live-votes' }, onchange: (event) => { ui.showLiveVotes = event.target.checked; renderAll(); } }),
       'Mostrar en esta pantalla quién vota a quién',

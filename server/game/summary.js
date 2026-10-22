@@ -110,7 +110,7 @@ export function summaryData(state, { now = 0, timeZone = 'UTC', locale = 'es-MX'
   const counts = state.initial?.counts ?? {};
   const compositionLabel = Object.entries(counts)
     .filter(([, n]) => n > 0)
-    .map(([id, n]) => `${n} ${roleLabel(id)}`)
+    .map(([id, n]) => (n > 1 ? `${roleLabel(id)} ×${n}` : roleLabel(id)))
     .join(', ');
 
   return {
