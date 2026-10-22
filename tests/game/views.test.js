@@ -14,34 +14,17 @@ import {
   started,
   voteOut,
 } from '../helpers.js';
-
-// Keys that carry hidden information. Before the game ends they may only
-// appear inside `me` (the player's own secrets) — never in the public part.
-const SECRET_KEYS = new Set([
-  'role', 'team', 'partnerIds', 'partnerPicks', 'seerResults', 'doctorLastTargetId',
-  'abilityTargetId', 'ballotTargetId', 'ballots', 'abilities', 'saved', 'intendedVictimId',
-  'log', 'derived', 'initial', 'config',
-]);
-
-function secretPaths(value, path = '') {
-  if (value === null || typeof value !== 'object') return [];
-  return Object.entries(value).flatMap(([key, child]) => {
-    const here = path ? `${path}.${key}` : key;
-    return [...(SECRET_KEYS.has(key) ? [here] : []), ...secretPaths(child, here)];
-  });
-}
+import { leakedPaths } from '../leaks.js';
 
 /** Asserts that no view leaks hidden information, for the room and every player. */
 function assertNoLeaks(state, label) {
   const ended = state.phase === 'ended';
-  const allowedPublic = (path) => ended && /^players\.\d+\.role$/.test(path);
-
-  const leaks = secretPaths(publicView(state)).filter((path) => !allowedPublic(path));
+  const leaks = leakedPaths(publicView(state), { ended });
   assert.deepEqual(leaks, [], `${label}: public view leaks ${leaks.join(', ')}`);
 
   for (const p of state.players) {
     const view = playerView(state, p.id);
-    const outside = secretPaths(view).filter((path) => !path.startsWith('me.') && !allowedPublic(path));
+    const outside = leakedPaths(view, { ended });
     assert.deepEqual(outside, [], `${label}: view of ${p.id} leaks ${outside.join(', ')}`);
 
     if (p.role !== 'mafia') {
