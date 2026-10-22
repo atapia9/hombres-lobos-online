@@ -1,7 +1,7 @@
 # Render Blueprint for the game server (free plan). See docs/despliegue.md.
 services:
   - type: web
-    name: mafia-online
+    name: hombres-lobos-online
     runtime: node
     plan: free
     region: oregon

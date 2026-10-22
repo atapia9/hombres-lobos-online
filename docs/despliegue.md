@@ -2,7 +2,7 @@
 
 Hay dos partes:
 
-1. **Cliente estático en GitHub Pages:** <https://atapia9.github.io/mafia-online/>
+1. **Cliente estático en GitHub Pages:** <https://atapia9.github.io/hombres-lobos-online/>
 2. **Servidor del juego** (Node + Socket.IO), que necesita un hosting con WebSockets. Aquí se usa Render con el plan gratuito.
 
 La URL del servidor llega al cliente a través de la variable del repositorio `SERVER_URL`.
@@ -14,7 +14,7 @@ En una cuenta GitHub Free, Pages solo funciona en repositorios **públicos**.
 1. Activa Pages con la fuente **GitHub Actions**: *Settings → Pages → Build and deployment → Source: GitHub Actions*. También puedes hacerlo desde la terminal:
 
    ```bash
-   gh api -X POST repos/atapia9/mafia-online/pages -f build_type=workflow
+   gh api -X POST repos/atapia9/hombres-lobos-online/pages -f build_type=workflow
    ```
 
 2. Cada push a `main` que cambie `public/`, `scripts/write-config.js` o el propio workflow ejecuta [`.github/workflows/pages.yml`](../.github/workflows/pages.yml). Ese workflow:
@@ -35,20 +35,20 @@ Mientras `SERVER_URL` no esté definida, `config.js` queda vacío y el cliente i
 El repositorio incluye [`render.yaml`](../render.yaml): un servicio web Node en el plan `free`, con `npm ci --omit=dev`, `npm start`, comprobación de salud en `/health`, `PORT=10000` y `NODE_ENV=production`. La versión de Node sale de `.nvmrc` (24).
 
 1. Crea una cuenta en <https://render.com> y conecta tu cuenta de GitHub.
-2. Elige **New → Blueprint** y selecciona el repositorio `atapia9/mafia-online`. Render leerá `render.yaml`.
+2. Elige **New → Blueprint** y selecciona el repositorio `atapia9/hombres-lobos-online`. Render leerá `render.yaml`.
 3. Cuando te pida `CORS_ORIGIN`, escribe **solo el origen** de Pages, sin la ruta:
 
    ```
    https://atapia9.github.io
    ```
 
-   Si escribes `https://atapia9.github.io/mafia-online`, el servidor no arrancará: es un error frecuente y se rechaza a propósito.
+   Si escribes `https://atapia9.github.io/hombres-lobos-online`, el servidor no arrancará: es un error frecuente y se rechaza a propósito.
 
-4. Espera a que termine el despliegue y copia la URL del servicio, por ejemplo `https://mafia-online-xxxx.onrender.com`. Comprueba que `https://…/health` responde `{"ok":true,…}`.
+4. Espera a que termine el despliegue y copia la URL del servicio, por ejemplo `https://hombres-lobos-online-xxxx.onrender.com`. Comprueba que `https://…/health` responde `{"ok":true,…}`.
 5. Guarda esa URL en la variable del repositorio y vuelve a publicar Pages:
 
    ```bash
-   gh variable set SERVER_URL --body "https://mafia-online-xxxx.onrender.com"
+   gh variable set SERVER_URL --body "https://hombres-lobos-online-xxxx.onrender.com"
    ```
 
    ```bash
@@ -81,7 +81,7 @@ Sirve para comprobar el despliegue de Pages sin Render. Los navegadores permiten
 2. En el mismo equipo, abre esta dirección:
 
    ```
-   https://atapia9.github.io/mafia-online/narrador.html?server=http://localhost:3000
+   https://atapia9.github.io/hombres-lobos-online/narrador.html?server=http://localhost:3000
    ```
 
 ## Solución de problemas

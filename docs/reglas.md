@@ -1,110 +1,104 @@
-# Reglas
+# Reglas de Hombres Lobos Online
 
-Mafia es un juego creado por **Dmitri Davýdov** (1986–1987). Ver [`historia.md`](historia.md).
+Estas son las reglas de **esta adaptación**. Están escritas por el proyecto y no reproducen las de ningún producto comercial. Las decisiones que concretan los puntos ambiguos están en [`decisiones.md`](decisiones.md) (D-1 a D-14). La ficha de cada rol está en [`roles.md`](roles.md).
 
-Este documento resume con nuestras propias palabras las reglas del modo original, tal como las implementa el proyecto. No es una traducción del texto «The Original Mafia Rules» del autor: Davýdov reclama derechos sobre ese texto.
+## Jugadores y equipos
 
-Las secciones marcadas con 🛠 explican cómo resuelve la aplicación cada punto. Las decisiones están en [`decisiones.md`](decisiones.md), identificadas como R1 a R13.
+- De **6 a 18 jugadores**, más un **narrador** que no juega. Lo ideal son 8–12.
+- Dos equipos:
+  - **Aldeanos:** ganan si eliminan a todos los lobos.
+  - **Lobos:** ganan si igualan o superan en número a los demás jugadores vivos.
+- La Bruja juega con los Aldeanos (D-3).
 
-## Índice
+## Composición
 
-1. [Modo original de Davýdov](#modo-original-de-davýdov)
-2. [Variante «Clásico con roles»](#variante-clásico-con-roles-no-forma-parte-del-original)
+El narrador elige en la sala de espera qué roles especiales entran (Vidente, Protector, Bruja, Cazador, Alcalde, Niña que espía, Lobo alfa) y cuántos lobos comunes hay. El resto de la mesa son Aldeanos.
 
----
+La aplicación **bloquea** el inicio si (D-10):
 
-## Modo original de Davýdov
+- hay menos de 6 o más de 18 jugadores;
+- no hay ningún lobo;
+- hay más de `⌈n/3⌉` lobos (contando al Lobo alfa);
+- hay más roles que jugadores.
 
-### Jugadores y equipos
+Y **avisa**, sin bloquear, si hay menos de `⌊n/4⌋` lobos. La recomendación es `⌊n/3⌋` lobos en total.
 
-- Se necesitan **al menos 6 jugadores** y un narrador, que no juega.
-- Solo hay dos equipos: **Honestos** y **Mafia**. No hay roles especiales.
-- Número de mafiosos recomendado:
+Cada rol especial aparece como mucho una vez. La composición es pública: todos saben qué roles hay en juego, no quién los tiene.
 
-  | Jugadores | 6–7 | 8–10 | 11–13 | 14–16 |
-  |---|---|---|---|---|
-  | Mafiosos | 2 | 3 | 4 | 5 |
+Los roles se reparten al azar con `crypto.randomInt` (Fisher–Yates).
 
-- El narrador puede ajustar el número antes de empezar.
+## Ciclo de juego
 
-🛠 La aplicación admite hasta 20 jugadores. Entre 17 y 20 extiende la misma tabla, con la fórmula ⌊(n+1)/3⌋. El narrador puede elegir entre 1 y ⌊(n−1)/2⌋ mafiosos, para que siempre haya menos mafiosos que honestos (R8). Los roles se reparten al azar en el servidor con `crypto.randomInt`.
+```
+Inicio → Noche 1 → Amanecer 1 → Día 1 → Noche 2 → …  hasta que gane un equipo
+```
 
-### Amanecer
+Una **ronda** es una noche, su amanecer y el día siguiente. La partida empieza de noche (D-11).
 
-- Cada jugador ve su rol en privado y después todos «cierran los ojos».
-- **Reconocimiento:** los mafiosos se reconocen entre sí. Es su única ventaja.
+### 1. Inicio
 
-🛠 El rol aparece tapado en el teléfono hasta que el jugador lo muestra, y se vuelve a tapar solo. A cada mafioso se le muestran sus compañeros.
+Cada jugador ve su rol en privado, en su teléfono. Los lobos ven quiénes son sus compañeros y quién es el Lobo alfa.
 
-### Día
+### 2. Noche (orden fijo)
 
-- La discusión es libre. Cualquier jugador puede acusar a otro en cualquier momento, y el acusado puede defenderse.
-- Cuando alguien pide votación, se vota. El acusado queda eliminado si vota «culpable» **la mayoría de los jugadores, sin contar al acusado**.
-- Puede haber varias acusaciones y eliminaciones en un mismo día.
-- Los eliminados **no revelan su rol** y no pueden ayudar a nadie.
+| Paso | Quién | Qué hace |
+|---|---|---|
+| 1 | Vidente | Elige a un jugador (no a sí misma) y sabe si es lobo o no. |
+| 2 | Protector | Elige a un jugador para protegerlo de la víctima de los lobos. No puede elegir a la **misma persona dos noches seguidas**, tampoco a sí mismo (D-2). |
+| 3 | Lobos | Eligen una víctima (nunca a un lobo). Muere solo si **todos los lobos vivos** eligen a la misma persona; si queda un solo lobo, su elección basta. Pueden cambiar de elección mientras el paso está abierto. |
+| 3b | Lobo alfa | Si los lobos fijaron una víctima y el alfa no ha usado su habilidad, decide si la **convierte** en lobo en vez de matarla (D-4). |
+| 4 | Bruja | Ve a la víctima efectiva (si la hay) y puede usar su poción de vida, su poción de muerte, ambas o ninguna (D-3). |
+| — | Amanecer | El narrador cierra la noche. |
 
-🛠 Cómo funciona en la aplicación:
-- Solo votan los vivos, y el acusado no vota.
-- Hacen falta más de la mitad de los votos posibles: no votar cuenta como «no culpable» (R2).
+Reglas del orden (D-13):
 
-  | Vivos | Votantes | Votos «culpable» necesarios |
-  |---:|---:|---:|
-  | 7 | 6 | 4 |
-  | 5 | 4 | 3 |
-  | 4 | 3 | 2 |
-  | 2 | 1 | 1 |
+- Cada paso termina cuando sus actores vivos han actuado.
+- Si el rol del paso no existe, está muerto o no puede hacer nada (por ejemplo, la Bruja sin pociones útiles), el servidor salta el paso. Nadie lo nota, porque todas las pantallas de noche son privadas y todos los vivos ven el mismo panel cubierto.
+- El narrador puede saltar el paso en curso. Para el paso de los lobos, saltar significa «sin víctima».
 
-- El jugador acusa desde su teléfono y el narrador abre la votación. Hay una votación a la vez (R3).
-- Mientras se vota solo se ve cuántos han votado. Al cerrar, todos ven quién votó «culpable», como en una votación a mano alzada (R10).
-- El narrador confirma el resultado o anula la votación. Una votación anulada no tiene ningún efecto y queda en el registro.
+**Si los lobos no se ponen de acuerdo** (D-1): cuando todos han votado pero no coinciden, el narrador lo ve y puede pedirles que voten de nuevo o declarar que esa noche no hay víctima. El narrador **nunca** elige la víctima.
 
-### Noche de la mafia (opcional)
+**Resolución de la noche**, en este orden:
 
-- Se convoca por **mayoría de los vivos**.
-- Cada participante elige en privado: los honestos eligen «Honesto» y los mafiosos eligen una víctima.
-- La víctima muere solo si **todos los mafiosos vivos eligen el mismo nombre**. Si queda un solo mafioso vivo, su elección basta.
-- El número de votos de mafia revela cuántos mafiosos siguen vivos.
+1. **Protección:** si el Protector eligió a la víctima de los lobos, nadie muere por los lobos.
+2. **Conversión:** si el alfa decidió convertir y la víctima no estaba protegida, la víctima se vuelve Lobo y no muere.
+3. **Curación:** si la Bruja usó la poción de vida, la víctima se salva.
+4. **Muertes:** muere la víctima de los lobos (si sigue siéndolo) y la persona envenenada por la Bruja. El Protector no protege del veneno.
 
-🛠 Cómo funciona en la aplicación:
-- **Convocar la noche:** cada vivo puede pedirla; el botón del narrador se activa cuando la pide más de la mitad de los vivos (R4).
-- **Papeleta:** todos los vivos entregan una con el mismo aspecto en pantalla. Un mafioso no puede marcar «Honesto» ni elegirse a sí mismo o a un compañero (R5).
-- **Papeletas que faltan:** si el narrador cierra la noche antes de tiempo, la de un honesto cuenta como «Honesto» y la de un mafioso como «sin víctima». En ese caso esa noche no muere nadie.
-- **Anuncio al amanecer:** se dice quién murió y **cuántas papeletas de mafia hubo**.
+### 3. Amanecer
 
-### Victoria
+- El narrador anuncia quién murió. **No se dice cómo** ni se revela el rol, salvo que el narrador active «Revelar el rol de cada jugador al morir» (D-12).
+- Si murió el **Cazador**, dispara ahora: elige a otro jugador vivo, que muere con él (D-9). El narrador puede omitir el disparo si el Cazador no puede hacerlo.
+- El día no empieza hasta resolver el disparo.
 
-- Ganan los **Honestos** si no queda ningún mafioso vivo.
-- Gana la **Mafia** si todos los honestos han sido eliminados.
+### 4. Día
 
-🛠 Cómo funciona en la aplicación:
-- **Sin paridad:** la mafia no gana por igualar en número a los honestos (R7).
-- **Terminar sin ganador:** el narrador puede hacerlo si la partida se bloquea.
-- **Retirar a un jugador:** durante la partida cuenta como una eliminación (R12).
+1. **Discusión libre**, con temporizador opcional.
+2. **Acusaciones:** cualquier jugador vivo acusa a otro desde su teléfono. Cada uno mantiene como mucho una acusación (una nueva reemplaza a la anterior). El narrador puede descartar acusaciones.
+3. **Votación** (D-6, opción A): el narrador la abre entre todos los acusados. Cada jugador vivo marca a **uno** de los acusados (nunca a sí mismo) o se abstiene, y puede cambiar su voto mientras siga abierta.
+4. **Resultado:** sale quien tenga más votos. El voto del **Alcalde vale doble** (D-7). Si hay empate, nadie sale; con la opción «El Alcalde desempata», sale el empatado por el que votó el Alcalde vivo, si votó por alguno de ellos.
+5. El narrador **confirma** el resultado o **anula** la votación (anular permite repetirla). Solo hay una votación confirmada por día.
+6. Si el eliminado es el Cazador, dispara de inmediato.
+7. El narrador pasa a la noche.
 
-### Puntuación (opcional)
+Al cerrar la votación, todos ven el resultado. Si la opción «Mostrar a todos quién votó a quién» está activa, ven también quién votó por cada acusado (sin los pesos del Alcalde; los totales ponderados solo los ve el narrador).
 
-- Si gana la Mafia, cada mafioso vivo suma tantos puntos como honestos había al inicio.
-- Si ganan los Honestos, cada honesto vivo suma tantos puntos como honestos sobrevivieron.
+## Victoria
 
-🛠 Con «Nueva partida con los mismos jugadores», la puntuación se acumula en la sala (R9). El narrador puede ocultarla del resumen.
+Se comprueba cada vez que alguien muere:
 
-### Rondas
+- **Aldeanos:** no queda ningún lobo vivo.
+- **Lobos:** los lobos vivos son tantos o más que los demás jugadores vivos.
+- Si hay un disparo del Cazador pendiente, la victoria se decide **después** del disparo.
 
-🛠 En la aplicación, una **ronda** es un ciclo de Día y Noche, y la **partida** es el juego completo. Quien queda eliminado sigue fuera hasta el final de la partida (R1).
+El narrador también puede terminar la partida sin ganador. Al terminar, todos ven todos los roles y el narrador puede copiar o descargar el resumen.
 
----
+## Otras reglas
 
-## Variante «Clásico con roles» (no forma parte del original)
-
-Es una adaptación posterior, inspirada en Werewolf (Andrew Plotkin, 1997). Se activa al crear la sala y la interfaz la marca como variante.
-
-- Hay noche en **cada ronda**, sin votarla (V1).
-- La mafia sigue necesitando **unanimidad**. En esta variante, cada mafioso ve en vivo lo que eligen sus compañeros (V2).
-- **Vidente:** cada noche consulta a un jugador vivo y descubre en privado si es de la Mafia o Honesto. Solo puede consultar una vez por noche (V3).
-- **Doctor:** cada noche protege a un jugador vivo. Puede protegerse a sí mismo, pero no al mismo jugador dos noches seguidas. Si protege a la víctima, nadie muere (V4).
-- La Vidente y el Doctor salen del equipo honesto. La variante está disponible desde 6 jugadores (V5).
-- No se revela el rol de los muertos y no se anuncia el número de papeletas de mafia (V6).
-- La victoria y la puntuación funcionan igual que en el modo original (V7).
+- **Retirar a un jugador:** el narrador puede retirar a alguien durante la partida. Cuenta como una eliminación, no revela su rol y no activa el disparo del Cazador.
+- **Muertos:** no actúan, no votan y no deben revelar su rol.
+- **Reconexión:** quien cierra la pestaña vuelve a su asiento con el mismo navegador. Desde otro dispositivo, entra con su nombre y el narrador aprueba que recupere su asiento.
+- **Nueva partida:** «Nueva partida con los mismos jugadores» vuelve a la sala de espera con la misma configuración.
 
 ---
 

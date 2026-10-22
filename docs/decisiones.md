@@ -1,7 +1,7 @@
 # Registro de decisiones (ADR) — Hombres Lobos Online
 
-> Estado: **PROPUESTA — pendiente de confirmación**. No se escribe código hasta que se apruebe este documento.
-> Fecha: 2026-10-21
+> Estado: **APROBADO** el 2026-10-21: D-1 a D-14 con las opciones propuestas (D-6, opción A; D-14, conservar el historial). Repositorio público con licencia MIT.
+> Fecha: 2026-10-21 · Implementado en la versión 0.1.0.
 
 Este material fue elaborado con asistencia de Claude (Anthropic) y revisado por [nombre].
 
@@ -56,18 +56,19 @@ Notas:
 ## ADR-001 — Arquitectura general
 
 - **Motor puro** en `server/game/`: funciones sin E/S que reciben un estado y una acción y devuelven un estado nuevo más una lista de eventos (`{ state, events }`). No conoce Socket.IO. Toda la aleatoriedad se inyecta (`rng`), así las pruebas son deterministas y en producción se usa `crypto.randomInt`.
-- **Capa de red** en `server/index.js` + `server/net/`: Express 5 sirve `public/`, Socket.IO 4.8 recibe intenciones, las valida, llama al motor y reparte los eventos según su **visibilidad** (pública / narrador / jugador concreto / lobos).
+- **Capa de red** en `server/index.js` + `server/net/`: Express 5 sirve `public/`, Socket.IO 4.8 recibe intenciones, las valida, llama al motor y envía a cada destinatario **su propia vista** del estado (pública / jugador concreto / narrador).
 - **Cliente** vanilla en módulos ES. `public/config.js` define `SERVER_URL`; se puede sobrescribir con `?server=https://...`.
 
 ```
-cliente ──intención──▶ validación + rate limit ──▶ motor puro ──▶ eventos etiquetados
+cliente ──intención──▶ validación + rate limit ──▶ motor puro ──▶ estado nuevo
                                                                   │
-          ◀── emit privado / sala pública / sala narrador ◀───────┘
+   ◀── state:private (me) / state:public (sala) / state:narrator ◀┘
+        playerView          publicView           narratorView
 ```
 
 ## ADR-002 — Visibilidad de la información (seguridad)
 
-Cada evento del motor lleva un campo `audience`: `public`, `narrator`, `wolves`, `player:<id>`. Un único módulo (`server/net/dispatch.js`) traduce eso a `emit`. Reglas:
+Lo que sale del servidor se construye **solo** con tres funciones de proyección de `server/game/views.js`: `publicView` (toda la sala), `playerView` (un jugador: la vista pública más su `me`) y `narratorView` (todo). `server/net/handlers.js` envía cada una a su destinatario. Así es imposible mandar por error un dato que la proyección no incluye. Reglas:
 - El rol de un jugador solo se envía a su propio socket.
 - El resultado de la vidente, la protección y las pociones solo se envían a su dueño (y al narrador).
 - El estado público (`publicView(state)`) se construye con una función de proyección que nunca incluye roles, salvo los revelados por configuración o al final.
@@ -75,7 +76,7 @@ Cada evento del motor lleva un campo `audience`: `public`, `narrator`, `wolves`,
 
 ## ADR-003 — Identidad y reconexión
 
-- Al unirse, el servidor genera un `playerToken` (`crypto.randomUUID()`) que el cliente guarda en `localStorage` junto con el código de sala.
+- Al unirse, el servidor genera un `playerToken` aleatorio de 128 bits (`crypto.randomBytes`, en `server/security.js`) que el cliente guarda en el navegador junto con el código de sala.
 - Para reconectar: código de sala + token → se recupera rol y estado. Sin token, el nombre por sí solo **no** recupera la sesión (evita suplantación); el narrador puede reasignar un jugador desconectado a un nuevo dispositivo.
 - El narrador tiene su propio `narratorToken`.
 - No uso `connectionStateRecovery` de Socket.IO: el estado se reenvía completo al reconectar, lo cual es más simple y robusto con salas en memoria.
@@ -83,12 +84,12 @@ Cada evento del motor lleva un campo `audience`: `public`, `narrator`, `wolves`,
 ## ADR-004 — Validación y límite de frecuencia
 
 - Validación manual de cada carga útil (tipos, longitudes, ids existentes, fase correcta, jugador vivo, rol correcto). Nombres: 1–20 caracteres, recortados y escapados al pintarse (`textContent`, nunca `innerHTML`).
-- Límite de frecuencia: cubeta de fichas por socket implementada con `socket.use` (sin dependencia extra), p. ej. 10 eventos/s con ráfaga de 20.
+- Límite de frecuencia: cubeta de fichas por socket implementada con `socket.use` (sin dependencia extra); quien insiste en superarla queda desconectado.
 - `helmet` (8.3.0) para cabeceras HTTP y CORS de Socket.IO restringido a `CORS_ORIGIN`.
 
 ## ADR-005 — Persistencia
 
-Salas en memoria (`Map`), con limpieza de salas inactivas tras 2 h. Limitaciones documentadas: se pierden al reiniciar y no escalan a varias instancias. Mejora futura: SQLite (una instancia) o Redis + `@socket.io/redis-adapter` (varias instancias).
+Salas en memoria (`Map`), con limpieza de salas inactivas tras 6 h. Limitaciones documentadas: se pierden al reiniciar y no escalan a varias instancias. Mejora futura: SQLite (una instancia) o Redis + `@socket.io/redis-adapter` (varias instancias).
 
 ## ADR-006 — Pruebas
 
