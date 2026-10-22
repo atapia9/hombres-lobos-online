@@ -1,0 +1,96 @@
+/* Narrator screen. */
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--focus);
+  border-radius: 8px;
+  z-index: 20;
+}
+.skip-link:focus { top: 8px; }
+
+.room-code {
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.join-link {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  margin: 8px 0;
+}
+
+.qr-box {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0 4px;
+}
+
+.qr {
+  width: min(240px, 100%);
+  height: auto;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.phase-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.announcement {
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 12px;
+  border-left: 4px solid var(--night);
+  background: var(--surface-2);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.timer {
+  font-size: 1.6rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.timer.is-over { color: var(--accent-strong); }
+
+.vote-box { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; }
+
+.tally { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0; }
+.tally > div { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; min-width: 92px; }
+.tally strong { display: block; font-size: 1.4rem; }
+
+.ballot-guilty { color: var(--accent-strong); font-weight: 700; }
+.ballot-innocent { color: var(--ok); font-weight: 700; }
+.ballot-none { color: var(--muted); }
+
+.roster-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.log {
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.log h3 { margin-top: 12px; position: sticky; top: 0; background: var(--surface); padding: 4px 0; }
+.log ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.log li { display: grid; grid-template-columns: auto 1fr; gap: 8px; font-size: 0.92rem; }
+.log time { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.tabs .btn { border: 0; border-radius: 0; }
+.tabs .btn[aria-pressed='true'] { background: var(--accent); color: var(--accent-text); }
+
+.winner { font-size: 1.8rem; font-weight: 800; margin: 0 0 4px; }
+.closing { font-style: italic; color: var(--muted); }

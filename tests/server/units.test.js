@@ -16,7 +16,7 @@ import { RoomStore, addSeat, findSeatByToken, isNarrator, rotateSeatToken } from
 import { SCHEMAS, check, roomCode, timeZone } from '../../server/net/validate.js';
 import { createRateLimiter } from '../../server/net/rateLimit.js';
 import { isOriginAllowed, loadConfig, parseOrigins } from '../../server/config.js';
-import { VENDORED } from '../../scripts/vendor.js';
+import { VENDORED, vendoredContent } from '../../scripts/vendor.js';
 
 describe('security helpers (ADR-004)', () => {
   it('builds 5-character room codes without look-alike characters', () => {
@@ -161,9 +161,9 @@ describe('configuration (ADR-015)', () => {
 describe('vendored browser libraries (ADR-006)', () => {
   it('match the installed versions byte for byte (run `npm run vendor` after updating)', async () => {
     const root = join(import.meta.dirname, '..', '..');
-    for (const { from, to } of VENDORED) {
-      const [installed, vendored] = await Promise.all([readFile(join(root, from)), readFile(join(root, to))]);
-      assert.ok(installed.equals(vendored), `${to} is out of date`);
+    for (const entry of VENDORED) {
+      const [expected, vendored] = await Promise.all([vendoredContent(entry), readFile(join(root, entry.to))]);
+      assert.ok(expected.equals(vendored), `${entry.to} is out of date`);
     }
   });
 });
