@@ -8,3 +8,4 @@ export * from './night.js';
 export * from './victory.js';
 export * from './game.js';
 export * from './views.js';
+export * from './summary.js';
