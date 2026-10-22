@@ -6,7 +6,7 @@ import { createGame } from './game/index.js';
 import { generatePlayerId, generateRoomCode, generateToken, tokensEqual } from './security.js';
 
 export const DEFAULT_MAX_ROOMS = 500;
-export const DEFAULT_ROOM_TTL_MS = 6 * 60 * 60 * 1000; // idle rooms are removed after 6 hours
+export const DEFAULT_ROOM_TTL_MS = 6 * 60 * 60 * 1000; // idle rooms are removed after 6 hours (docs/decisiones.md, ADR-005)
 
 export class RoomStore {
   #rooms = new Map();
@@ -22,13 +22,13 @@ export class RoomStore {
   }
 
   /** Returns the new room, or null when the server is full. */
-  create({ mode, timeZone }) {
+  create({ timeZone } = {}) {
     if (this.#rooms.size >= this.maxRooms) return null;
     let code;
     do code = generateRoomCode(); while (this.#rooms.has(code));
     const room = {
       code,
-      game: createGame({ mode }),
+      game: createGame(),
       timeZone,
       narratorToken: generateToken(),
       narratorSocketId: null,

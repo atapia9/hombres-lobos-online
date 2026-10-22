@@ -7,7 +7,7 @@ const config = loadConfig();
 const server = createApp(config);
 const port = await server.listen(config.port);
 
-console.log(`Mafia Online escuchando en http://localhost:${port} (${config.nodeEnv})`);
+console.log(`Hombres Lobos Online escuchando en http://localhost:${port} (${config.nodeEnv})`);
 if (config.corsOrigins.length > 0) console.log(`Orígenes permitidos: ${config.corsOrigins.join(', ')}`);
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

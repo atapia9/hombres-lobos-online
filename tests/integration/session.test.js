@@ -24,7 +24,7 @@ describe('sessions, reconnection and seats (ADR-008)', () => {
     const answer = await ok(back, 'room:rejoin', { code: room.code, playerToken: leaver.token });
     assert.equal(answer.playerId, leaver.playerId);
     assert.equal(answer.state.me.role, role);
-    assert.equal(answer.state.phase, 'dawn');
+    assert.equal(answer.state.phase, 'start');
     assert.equal((await room.narrator.sync()).connections[leaver.playerId], true);
   });
 
@@ -117,13 +117,13 @@ describe('sessions, reconnection and seats (ADR-008)', () => {
     await ok(room.narrator, 'room:kick', { playerId: kicked.playerId });
     await notice;
     assert.equal((await room.narrator.sync()).players.length, 6);
-    assert.deepEqual(await kicked.request('day:vote', { guilty: true }), { ok: false, error: 'NOT_IN_ROOM' });
+    assert.deepEqual(await kicked.request('day:vote', { targetId: null }), { ok: false, error: 'NOT_IN_ROOM' });
 
     await ok(room.narrator, 'game:start');
     await ok(room.narrator, 'room:kick', { playerId: retired.playerId });
     const state = await retired.sync();
     assert.equal(state.me.alive, false);
-    assert.equal(state.players.find((p) => p.id === retired.playerId).eliminatedBy, 'narrator');
+    assert.equal(state.players.find((p) => p.id === retired.playerId).alive, false);
   });
 
   it('lets players leave the lobby', async () => {

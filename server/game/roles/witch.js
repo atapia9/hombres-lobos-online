@@ -22,7 +22,8 @@ export function witchCanAct(state, effectiveVictimId) {
   return (healAvailable(state) && effectiveVictimId !== null) || poisonAvailable(state);
 }
 
-export function brew(state, me, { heal, poisonTargetId }, env, findPlayer, effectiveVictimId) {
+export function brew(state, me, { heal, poisonTargetId: rawPoison }, env, findPlayer, effectiveVictimId) {
+  const poisonTargetId = rawPoison ?? null; // omitted = no poison
   if (typeof heal !== 'boolean') return 'INVALID_PAYLOAD';
   if (poisonTargetId !== null && typeof poisonTargetId !== 'string') return 'INVALID_PAYLOAD';
   if (heal && (!healAvailable(state) || effectiveVictimId === null)) return 'POTION_UNAVAILABLE';
