@@ -45,27 +45,27 @@ describe('security helpers (ADR-004)', () => {
 describe('RoomStore', () => {
   it('creates rooms with unique codes and secret tokens', () => {
     const store = new RoomStore();
-    const a = store.create({ mode: 'original', timeZone: 'UTC' });
-    const b = store.create({ mode: 'classic', timeZone: 'UTC' });
+    const a = store.create({ timeZone: 'UTC' });
+    const b = store.create({ timeZone: 'UTC' });
     assert.notEqual(a.code, b.code);
     assert.equal(store.get(a.code), a);
-    assert.equal(b.game.mode, 'classic');
+    assert.equal(b.game.phase, 'lobby');
     assert.equal(isNarrator(a, a.narratorToken), true);
     assert.equal(isNarrator(a, b.narratorToken), false);
   });
 
   it('refuses new rooms when full', () => {
     const store = new RoomStore({ maxRooms: 1 });
-    assert.ok(store.create({ mode: 'original' }));
-    assert.equal(store.create({ mode: 'original' }), null);
+    assert.ok(store.create({}));
+    assert.equal(store.create({}), null);
   });
 
   it('removes rooms idle for longer than the TTL', () => {
     let clock = 0;
     const store = new RoomStore({ ttlMs: 1000, now: () => clock });
-    const idle = store.create({ mode: 'original' });
+    const idle = store.create({});
     clock = 600;
-    const active = store.create({ mode: 'original' });
+    const active = store.create({});
     clock = 1500;
     store.touch(active);
     assert.deepEqual(store.sweep(), [idle.code]);
@@ -74,7 +74,7 @@ describe('RoomStore', () => {
   });
 
   it('finds seats by token and rotates tokens', () => {
-    const room = new RoomStore().create({ mode: 'original' });
+    const room = new RoomStore().create({});
     const { playerId, seat } = addSeat(room);
     const old = seat.token;
     assert.equal(findSeatByToken(room, old).playerId, playerId);
@@ -98,13 +98,13 @@ describe('payload validation (ADR-007)', () => {
   });
 
   it('keeps only the known keys', () => {
-    const result = check({ guilty: true, type: 'game:end', actor: { kind: 'narrator' } }, SCHEMAS['day:vote']);
-    assert.deepEqual(result, { ok: true, value: { guilty: true } });
+    const result = check({ accept: true, type: 'game:end', actor: { kind: 'narrator' } }, SCHEMAS['day:confirm']);
+    assert.deepEqual(result, { ok: true, value: { accept: true } });
   });
 
   it('rejects missing fields, wrong types and non-object payloads', () => {
-    assert.equal(check({}, SCHEMAS['day:vote']).ok, false);
-    assert.equal(check({ guilty: 'yes' }, SCHEMAS['day:vote']).ok, false);
+    assert.equal(check({}, SCHEMAS['day:confirm']).ok, false);
+    assert.equal(check({ accept: 'yes' }, SCHEMAS['day:confirm']).ok, false);
     assert.equal(check('hello', SCHEMAS['room:join']).ok, false);
     assert.equal(check([1, 2], SCHEMAS['game:start']).ok, false);
     assert.equal(check({ targetId: 'p1' }, SCHEMAS['day:accuse']).ok, false);
@@ -113,12 +113,29 @@ describe('payload validation (ADR-007)', () => {
   it('accepts empty payloads for events without fields, including null', () => {
     assert.deepEqual(check(undefined, SCHEMAS['game:start']), { ok: true, value: {} });
     assert.deepEqual(check(null, SCHEMAS['game:start']), { ok: true, value: {} });
-    assert.equal(check(null, SCHEMAS['day:vote']).ok, false);
+    assert.equal(check(null, SCHEMAS['day:confirm']).ok, false);
+  });
+
+  it('validates the werewolf payloads', () => {
+    const roles = SCHEMAS['room:configure'].roles;
+    assert.deepEqual(roles({ witch: true, alpha: false }), { ok: true, value: { witch: true, alpha: false } });
+    assert.equal(roles({ villager: true }).ok, false, 'villagers are not a switch');
+    assert.equal(roles({ witch: 1 }).ok, false);
+    assert.equal(roles({ __proto__: { witch: true } }).ok, false, 'no inherited keys');
+    assert.equal(check({ wolfCount: 7 }, SCHEMAS['room:configure']).ok, false);
+    assert.equal(check({ step: 'wolves' }, SCHEMAS['night:skipStep']).ok, true);
+    assert.equal(check({ step: 'done' }, SCHEMAS['night:skipStep']).ok, false);
+    assert.deepEqual(
+      check({ heal: true, poisonTargetId: null, extra: 1 }, SCHEMAS['night:act']),
+      { ok: true, value: { heal: true, poisonTargetId: null } },
+    );
+    assert.equal(check({ to: 'lobby' }, SCHEMAS['phase:advance']).ok, false);
+    assert.equal(check({ targetId: null }, SCHEMAS['day:vote']).ok, true, 'abstain');
   });
 
   it('does not read inherited properties', () => {
-    const payload = Object.create({ guilty: true });
-    assert.equal(check(payload, SCHEMAS['day:vote']).ok, false);
+    const payload = Object.create({ accept: true });
+    assert.equal(check(payload, SCHEMAS['day:confirm']).ok, false);
   });
 });
 
@@ -145,7 +162,7 @@ describe('configuration (ADR-015)', () => {
   });
 
   it('refuses origins with a path, a common mistake with GitHub Pages', () => {
-    assert.throws(() => parseOrigins('https://atapia9.github.io/mafia-online'), /without paths/);
+    assert.throws(() => parseOrigins('https://atapia9.github.io/hombres-lobos-online'), /without paths/);
   });
 
   it('allows the same host, listed origins and clients without Origin', () => {
@@ -172,13 +189,13 @@ describe('Pages config generation (ADR-006)', async () => {
   const { configSource } = await import('../../scripts/write-config.js');
 
   it('writes the server origin as a JSON string', () => {
-    assert.match(configSource('https://mafia-online.onrender.com/'), /export const SERVER_URL = "https:\/\/mafia-online\.onrender\.com";/);
+    assert.match(configSource('https://hombres-lobos-online.onrender.com/'), /export const SERVER_URL = "https:\/\/hombres-lobos-online\.onrender\.com";/);
     assert.match(configSource(''), /export const SERVER_URL = "";/);
     assert.match(configSource(undefined), /export const SERVER_URL = "";/);
   });
 
   it('refuses plain http outside localhost and malformed values', () => {
-    assert.throws(() => configSource('http://mafia.example'), /https/);
+    assert.throws(() => configSource('http://lobos.example'), /https/);
     assert.throws(() => configSource('not a url'));
     assert.match(configSource('http://localhost:3000'), /"http:\/\/localhost:3000"/);
   });

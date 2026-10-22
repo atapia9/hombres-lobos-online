@@ -1,7 +1,7 @@
 {
-  "name": "mafia-online",
+  "name": "hombres-lobos-online",
   "version": "0.1.0",
-  "description": "Versión en línea del juego Mafia de Dmitri Davýdov, con pantalla de narrador y de jugadores.",
+  "description": "Juego en línea de deducción social Lobos contra Aldeanos, adaptado de la familia Mafia/Werewolf, con pantalla de narrador y de jugadores.",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -12,12 +12,13 @@
     "start": "node --env-file-if-exists=.env server/index.js",
     "dev": "node --watch --env-file-if-exists=.env server/index.js",
     "test": "node --test \"tests/**/*.test.js\"",
+    "test:game": "node --test \"tests/game/**/*.test.js\"",
     "vendor": "node scripts/vendor.js",
     "bots": "node scripts/bots.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/atapia9/mafia-online.git"
+    "url": "git+https://github.com/atapia9/hombres-lobos-online.git"
   },
   "dependencies": {
     "express": "5.3.0",

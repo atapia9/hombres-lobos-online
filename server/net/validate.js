@@ -1,7 +1,7 @@
 // Hand-written payload validation for Socket.IO events (ADR-007). No dependencies.
 // Each validator returns { ok: true, value } or { ok: false }. Only known keys are kept.
 
-import { MODES, PHASES } from '../game/index.js';
+import { MAX_PLAYERS, NIGHT_ORDER, OPTIONAL_ROLES, PHASES } from '../game/index.js';
 import { PLAYER_ID_PATTERN, ROOM_CODE_PATTERN, TOKEN_PATTERN } from '../security.js';
 
 const ok = (value) => ({ ok: true, value });
@@ -41,7 +41,20 @@ export const timeZone = (x) => {
 
 const token = v.pattern(TOKEN_PATTERN);
 const playerId = v.pattern(PLAYER_ID_PATTERN);
-const shortId = v.pattern(/^[av][0-9]{1,9}$/); // accusation ids (a1…) from the game state
+const shortId = v.pattern(/^a[0-9]{1,9}$/); // accusation ids (a1…) from the game state
+
+/** Lobby switches for the optional roles: { seer: true, witch: false, … }. Unknown roles are rejected. */
+export const roleSwitches = (x) => {
+  if (x === null || typeof x !== 'object' || Array.isArray(x)) return bad;
+  const keys = Object.keys(x);
+  if (keys.length === 0 || keys.length > OPTIONAL_ROLES.length) return bad;
+  const value = {};
+  for (const key of keys) {
+    if (!OPTIONAL_ROLES.includes(key) || typeof x[key] !== 'boolean') return bad;
+    value[key] = x[key];
+  }
+  return ok(value);
+};
 
 /** Validates a payload against `{ key: validator }`. Returns { ok, value } with only those keys. */
 export function check(payload, schema) {
@@ -60,17 +73,18 @@ export function check(payload, schema) {
 }
 
 export const SCHEMAS = {
-  'room:create': { mode: v.optional(v.oneOf(Object.values(MODES))), timeZone: v.optional(timeZone) },
+  'room:create': { timeZone: v.optional(timeZone) },
   'narrator:resume': { code: roomCode, narratorToken: token },
   'room:join': { code: roomCode, name: v.string(200) },
   'room:rejoin': { code: roomCode, playerToken: token },
   'room:leave': {},
   'state:sync': {},
   'room:configure': {
-    mode: v.optional(v.oneOf(Object.values(MODES))),
-    mafiaCount: v.optional(v.nullable(v.int(1, 20))),
+    wolfCount: v.optional(v.nullable(v.int(0, Math.ceil(MAX_PLAYERS / 3)))),
+    roles: v.optional(roleSwitches),
+    revealDeadRoles: v.optional(v.boolean()),
+    mayorBreaksTies: v.optional(v.boolean()),
     showVotes: v.optional(v.boolean()),
-    showScore: v.optional(v.boolean()),
   },
   'room:kick': { playerId },
   'seat:approve': { claimId: v.pattern(/^c[0-9]{1,9}$/) },
@@ -78,15 +92,22 @@ export const SCHEMAS = {
   'game:start': {},
   'game:end': {},
   'game:rematch': {},
-  'phase:advance': { to: v.oneOf([PHASES.DAY, PHASES.NIGHT]) },
+  'phase:advance': { to: v.oneOf([PHASES.NIGHT, PHASES.DAWN, PHASES.DAY]) },
   'timer:set': { seconds: v.int(0, 3600) },
+  'night:act': {
+    targetId: v.optional(playerId), // seer, protector, wolves
+    convert: v.optional(v.boolean()), // alpha
+    heal: v.optional(v.boolean()), // witch
+    poisonTargetId: v.optional(v.nullable(playerId)), // witch
+  },
+  'night:skipStep': { step: v.oneOf(NIGHT_ORDER.filter((step) => step !== 'done')) },
+  'night:wolvesRevote': {},
+  'hunter:shoot': { targetId: playerId },
+  'hunter:skip': {},
   'day:accuse': { targetId: playerId },
   'day:dismissAccusation': { accusationId: shortId },
-  'day:openVote': { accusationId: shortId },
-  'day:vote': { guilty: v.nullable(v.boolean()) },
+  'day:openVote': {},
+  'day:vote': { targetId: v.optional(v.nullable(playerId)), withdraw: v.optional(v.boolean()) },
   'day:closeVote': {},
   'day:confirm': { accept: v.boolean() },
-  'night:request': { wanted: v.boolean() },
-  'night:submit': { targetId: v.nullable(playerId) },
-  'night:ability': { targetId: playerId },
 };

@@ -19,7 +19,7 @@ describe('input validation and authorisation (ADR-007)', () => {
     assert.deepEqual(await c.request('room:join', { code: 'ZZZZZ', name: 'Ana' }), { ok: false, error: 'ROOM_NOT_FOUND' });
     assert.deepEqual(await c.request('room:join', { code: room.code, name: '<>' }), { ok: false, error: 'NAME_INVALID' });
     assert.deepEqual(await c.request('room:join', { code: room.code, name: 'jugador 1' }), { ok: false, error: 'NAME_TAKEN' });
-    assert.deepEqual(await c.request('room:create', { mode: 'werewolf' }), { ok: false, error: 'INVALID_PAYLOAD' });
+    assert.deepEqual(await c.request('room:create', { timeZone: 42 }), { ok: false, error: 'INVALID_PAYLOAD' });
     assert.deepEqual(await c.request('room:create', { timeZone: 'Mars/Base' }), { ok: false, error: 'INVALID_PAYLOAD' });
   });
 
@@ -43,18 +43,23 @@ describe('input validation and authorisation (ADR-007)', () => {
     assert.deepEqual(await stranger.request('game:start'), { ok: false, error: 'NOT_IN_ROOM' });
     assert.deepEqual(await room.players[0].request('game:start'), { ok: false, error: 'NOT_NARRATOR' });
     assert.deepEqual(await room.players[0].request('room:kick', { playerId: room.players[1].playerId }), { ok: false, error: 'NOT_NARRATOR' });
-    assert.deepEqual(await room.narrator.request('day:vote', { guilty: true }), { ok: false, error: 'NOT_PLAYER' });
+    assert.deepEqual(await room.narrator.request('day:vote', { targetId: null }), { ok: false, error: 'NOT_PLAYER' });
+    assert.deepEqual(await room.narrator.request('night:act', { targetId: room.players[0].playerId }), { ok: false, error: 'NOT_PLAYER' });
+    assert.deepEqual(await room.players[0].request('night:skipStep', { step: 'seer' }), { ok: false, error: 'NOT_NARRATOR' });
+    assert.deepEqual(await room.players[0].request('hunter:skip'), { ok: false, error: 'NOT_NARRATOR' });
   });
 
   it('ignores extra fields that try to change the action or the actor', async () => {
     const room = await roomWithPlayers(t, 6);
-    await startGame(room);
-    await ok(room.narrator, 'phase:advance', { to: 'day' });
-    const answer = await room.players[0].request('night:request', { wanted: true, type: 'game:end', actor: { kind: 'narrator' } });
+    const { roles } = await startGame(room);
+    await ok(room.narrator, 'phase:advance', { to: 'night' });
+    const seer = room.players.find((c) => roles.get(c) === 'seer');
+    const target = room.players.find((c) => c !== seer);
+    const answer = await seer.request('night:act', { targetId: target.playerId, type: 'game:end', actor: { kind: 'narrator' } });
     assert.deepEqual(answer, { ok: true });
     const state = await room.narrator.sync();
-    assert.equal(state.phase, 'day');
-    assert.deepEqual(state.day.nightRequests, [room.players[0].playerId]);
+    assert.equal(state.phase, 'night');
+    assert.equal(state.night.seerTargetId, target.playerId);
   });
 
   it('accepts events without fields sent with an explicit undefined (arrives as null)', async () => {

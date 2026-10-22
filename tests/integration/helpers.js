@@ -96,10 +96,10 @@ export class TestClient {
   }
 }
 
-/** Creates a room and seats `n` players named "Jugador 1…n". */
-export async function roomWithPlayers(t, n, { mode = 'original' } = {}) {
+/** Creates a room and seats `n` players named "Jugador 1…n". `roles` switches optional roles. */
+export async function roomWithPlayers(t, n, { roles } = {}) {
   const narrator = await t.client();
-  const created = await narrator.request('room:create', { mode, timeZone: 'America/Mexico_City' });
+  const created = await narrator.request('room:create', { timeZone: 'America/Mexico_City' });
   assert.equal(created.ok, true, created.error);
   const players = [];
   for (let i = 1; i <= n; i += 1) {
@@ -110,35 +110,40 @@ export async function roomWithPlayers(t, n, { mode = 'original' } = {}) {
     Object.assign(c, { playerId: joined.playerId, token: joined.playerToken, name });
     players.push(c);
   }
+  if (roles) await ok(narrator, 'room:configure', { roles });
   return { narrator, code: created.code, narratorToken: created.narratorToken, players };
 }
 
-/** Narrator request that must succeed. */
+/** Narrator or player request that must succeed. */
 export async function ok(client, event, payload) {
   const answer = await client.request(event, payload);
   assert.equal(answer.ok, true, `${event} failed: ${answer.error}`);
   return answer;
 }
 
-/** Starts the game and returns { mafia, honest } client lists, read from each player's private state. */
+const WOLF_ROLES = new Set(['wolf', 'alpha']);
+
+/**
+ * Starts the game. Returns { roles, wolves, village, one(role) }, read from each
+ * player's own private state (the only place a player learns their role).
+ */
 export async function startGame(room) {
   await ok(room.narrator, 'game:start');
   const roles = new Map();
   for (const c of room.players) roles.set(c, (await c.sync()).me.role);
   return {
     roles,
-    mafia: room.players.filter((c) => roles.get(c) === 'mafia'),
-    honest: room.players.filter((c) => roles.get(c) !== 'mafia'),
+    wolves: room.players.filter((c) => WOLF_ROLES.has(roles.get(c))),
+    village: room.players.filter((c) => !WOLF_ROLES.has(roles.get(c))),
+    one: (role) => room.players.find((c) => roles.get(c) === role),
   };
 }
 
-/** Accuse → open vote → everyone else votes guilty → close → confirm. */
+/** Accusation by `accuser` → open vote → every voter marks `target` → close → confirm. */
 export async function voteOut(room, accuser, target, voters) {
   await ok(accuser, 'day:accuse', { targetId: target.playerId });
-  const state = await room.narrator.sync();
-  const accusation = state.day.accusations.find((a) => a.targetId === target.playerId);
-  await ok(room.narrator, 'day:openVote', { accusationId: accusation.id });
-  for (const voter of voters.filter((c) => c !== target)) await ok(voter, 'day:vote', { guilty: true });
+  await ok(room.narrator, 'day:openVote');
+  for (const voter of voters.filter((c) => c !== target)) await ok(voter, 'day:vote', { targetId: target.playerId });
   await ok(room.narrator, 'day:closeVote');
   await ok(room.narrator, 'day:confirm', { accept: true });
 }

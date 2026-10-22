@@ -26,15 +26,17 @@ const GAME_EVENTS = {
   'game:rematch': { as: 'narrator', type: 'game:rematch' },
   'phase:advance': { as: 'narrator', type: 'phase:advance' },
   'timer:set': { as: 'narrator', type: 'timer:set' },
+  'night:skipStep': { as: 'narrator', type: 'night:skipStep' },
+  'night:wolvesRevote': { as: 'narrator', type: 'night:wolvesRevote' },
+  'hunter:skip': { as: 'narrator', type: 'hunter:skip' },
   'day:dismissAccusation': { as: 'narrator', type: 'day:dismissAccusation' },
   'day:openVote': { as: 'narrator', type: 'day:openVote' },
   'day:closeVote': { as: 'narrator', type: 'day:closeVote' },
   'day:confirm': { as: 'narrator', type: 'day:confirm' },
+  'night:act': { as: 'player', type: 'night:act' },
+  'hunter:shoot': { as: 'player', type: 'hunter:shoot' },
   'day:accuse': { as: 'player', type: 'day:accuse' },
   'day:vote': { as: 'player', type: 'day:vote' },
-  'night:request': { as: 'player', type: 'night:request' },
-  'night:submit': { as: 'player', type: 'night:submit' },
-  'night:ability': { as: 'player', type: 'night:ability' },
 };
 
 const failure = (error) => ({ ok: false, error });
@@ -180,8 +182,8 @@ export function attachHandlers(io, { rooms, now = Date.now, rng, rateLimit = DEF
 
     // Narrator ------------------------------------------------------------------
 
-    on('room:create', ({ mode = 'original', timeZone = 'UTC' }) => {
-      const room = rooms.create({ mode, timeZone });
+    on('room:create', ({ timeZone = 'UTC' }) => {
+      const room = rooms.create({ timeZone });
       if (!room) return failure('SERVER_FULL');
       bindNarrator(socket, room);
       return { ok: true, code: room.code, narratorToken: room.narratorToken, state: narratorPayload(room) };

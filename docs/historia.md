@@ -1,8 +1,10 @@
-# Historia de Mafia
+# Historia: de Mafia a Hombres Lobos Online
+
+Hombres Lobos Online es una **adaptación**, no una copia del juego original. Este documento resume de dónde viene la familia de juegos y qué tiene de propio esta versión.
 
 ## El creador
 
-Mafia fue creado por **Dmitri Davýdov** (en inglés suele escribirse *Dimitry Davidoff*), psicólogo y entonces estudiante de la Universidad Estatal de Moscú.
+La familia de juegos nace con **Mafia**, creado por **Dmitri Davýdov** (en inglés suele escribirse *Dimitry Davidoff*), psicólogo y entonces estudiante de la Universidad Estatal de Moscú.
 
 - **Concepción:** 1986.
 - **Primera partida documentada:** 1987.
@@ -23,9 +25,19 @@ En una entrevista de 2014, Davýdov contó que también lo pensó, en parte, com
 
 ## Werewolf y las variantes con roles
 
-En 1997, Andrew Plotkin adaptó el juego con el tema de los hombres lobo y lo llamó **Werewolf**. A partir de ahí se popularizaron muchas variantes con roles especiales, como la Vidente o el Doctor.
+En **1997**, **Andrew Plotkin** adaptó el juego con el tema de los hombres lobo y lo llamó **Werewolf**. A partir de ahí se popularizaron muchas variantes con roles especiales para los aldeanos y para los lobos.
 
-La variante «Clásico con roles» de este proyecto se inspira en esas adaptaciones posteriores. **No forma parte del juego original** de Davýdov.
+## Esta adaptación
+
+Hombres Lobos Online toma de esa familia la idea central: dos equipos, uno informado y otro no, que se enfrentan alternando noches secretas y días de discusión. Lo demás es propio de este proyecto:
+
+- **Roles y nombres propios:** Vidente, Protector, Cazador, Alcalde, Niña que espía, Bruja, Lobo y Lobo alfa, con reglas redactadas por el proyecto en [`reglas.md`](reglas.md) y [`roles.md`](roles.md).
+- **Reglas concretas propias:** el orden fijo de la noche, la unanimidad de los lobos, la conversión del Lobo alfa, la votación entre acusados con voto doble del Alcalde y la victoria por paridad de los lobos (ver [`decisiones.md`](decisiones.md)).
+- **Juego en línea:** una pantalla de narrador y los teléfonos de los jugadores, con la información secreta enviada solo a su dueño.
+
+El código parte de [`mafia-online`](https://github.com/atapia9/mafia-online), una implementación previa del modo original de Davýdov hecha por el mismo autor.
+
+No se usan nombres, textos ni ilustraciones de productos comerciales del género.
 
 ## Fuentes
 
@@ -37,7 +49,7 @@ La variante «Clásico con roles» de este proyecto se inspira en esas adaptacio
 
 ## Derechos
 
-Este proyecto es una implementación independiente y no reclama ningún derecho sobre el juego ni sobre sus nombres. Davýdov reclama derechos de autor sobre el texto de sus reglas ([SVT](https://www.svt.se/kultur/anklagelsen-forradarna-har-snott-reglerna-fran-spelet-maffia)). Por eso este repositorio no reproduce ese texto: las reglas de [`reglas.md`](reglas.md) están redactadas con nuestras propias palabras.
+Este proyecto es una adaptación independiente y no reclama ningún derecho sobre Mafia, Werewolf ni sus nombres. Da crédito a Dmitri Davýdov como creador de la familia de juegos y a Andrew Plotkin por Werewolf. Davýdov reclama derechos de autor sobre el texto de sus reglas ([SVT](https://www.svt.se/kultur/anklagelsen-forradarna-har-snott-reglerna-fran-spelet-maffia)). Por eso este repositorio no reproduce ese texto: las reglas de [`reglas.md`](reglas.md) son las de esta adaptación, redactadas por el proyecto.
 
 ---
 

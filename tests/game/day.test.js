@@ -1,199 +1,120 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { nightRequestsNeeded, requiredGuiltyVotes } from '../../server/game/index.js';
-import { NARRATOR, act, as, daytime, playerById, rejects, voteOut } from '../helpers.js';
+import { candidatesFrom, playerView, publicView, tallyVote } from '../../server/game/index.js';
+import {
+  NARRATOR, act, advance, alive, as, dayVote, firstNight, playNight, rejects, started,
+} from '../helpers.js';
 
-/** Opens a vote on `targetId` (accused by `accuserId`) and returns the state. */
-function openVote(s, accuserId, targetId) {
-  s = act(s, { type: 'day:accuse', actor: as(accuserId), targetId });
-  const accusation = s.day.accusations.find((a) => a.targetId === targetId);
-  return act(s, { type: 'day:openVote', actor: NARRATOR, accusationId: accusation.id });
-}
+// 8 players: p1 p2 wolves, p3 seer, p4 protector, p5..p8 villagers.
+const day1 = (rules) => advance(playNight(firstNight(started(8, rules)), { seer: 'p1', protector: 'p8', wolves: 'p8' }), 'day');
+const accuse = (s, by, targetId) => act(s, { type: 'day:accuse', actor: as(by), targetId });
+const vote = (s, by, targetId) => act(s, { type: 'day:vote', actor: as(by), targetId });
 
-function castVotes(s, ballots) {
-  for (const [id, guilty] of Object.entries(ballots)) s = act(s, { type: 'day:vote', actor: as(id), guilty });
-  return s;
-}
-
-const close = (s) => act(s, { type: 'day:closeVote', actor: NARRATOR });
-const confirm = (s, accept = true) => act(s, { type: 'day:confirm', actor: NARRATOR, accept });
-
-describe('day vote threshold (R2)', () => {
-  it('needs more than half of the living players, not counting the accused', () => {
-    // living players → voters → guilty votes needed
-    const table = [[7, 6, 4], [5, 4, 3], [4, 3, 2], [2, 1, 1]];
-    for (const [living, voters, needed] of table) {
-      assert.equal(requiredGuiltyVotes(voters), needed, `${living} alive`);
-    }
-  });
-
-  it('eliminates the accused when the guilty votes reach the majority', () => {
-    let s = openVote(daytime(7), 'p3', 'p7');
-    s = castVotes(s, { p1: true, p2: true, p3: true, p4: true, p5: false });
-    s = confirm(close(s));
-    const accused = playerById(s, 'p7');
-    assert.equal(accused.alive, false);
-    assert.equal(accused.eliminatedBy, 'vote');
-    assert.equal(accused.eliminatedRound, 1);
-    assert.equal(s.phase, 'day');
-    assert.deepEqual(s.history.at(-1), {
-      round: 1, phase: 'day', type: 'vote', accusedId: 'p7', accuserId: 'p3',
-      passed: true, guiltyCount: 4, eligibleCount: 6, required: 4,
-    });
-  });
-
-  it('acquits with exactly half of the votes', () => {
-    let s = openVote(daytime(7), 'p3', 'p7');
-    s = castVotes(s, { p1: true, p2: true, p3: true, p4: false, p5: false, p6: false });
-    s = confirm(close(s));
-    assert.equal(playerById(s, 'p7').alive, true);
-    assert.equal(s.history.at(-1).passed, false);
-  });
-
-  it('counts abstentions as not guilty', () => {
-    let s = openVote(daytime(7), 'p3', 'p7');
-    s = castVotes(s, { p1: true, p2: true, p3: true });
-    s = close(s);
-    assert.equal(s.day.vote.result.abstainedCount, 3);
-    assert.equal(s.day.vote.result.passed, false);
-  });
-});
-
-describe('accusations and votes (R3)', () => {
-  it('lets any living player accuse another living player', () => {
-    const s = act(daytime(6), { type: 'day:accuse', actor: as('p4'), targetId: 'p1' });
-    assert.equal(s.day.accusations.length, 1);
-    assert.equal(s.day.accusations[0].accuserId, 'p4');
-    rejects(s, { type: 'day:accuse', actor: as('p4'), targetId: 'p4' }, 'TARGET_INVALID');
-    rejects(s, { type: 'day:accuse', actor: as('p4'), targetId: 'nobody' }, 'TARGET_INVALID');
-  });
-
-  it('keeps one pending accusation per accuser', () => {
-    let s = act(daytime(6), { type: 'day:accuse', actor: as('p4'), targetId: 'p1' });
-    s = act(s, { type: 'day:accuse', actor: as('p4'), targetId: 'p1' });
-    assert.equal(s.day.accusations.length, 1);
-    s = act(s, { type: 'day:accuse', actor: as('p4'), targetId: 'p2' });
+describe('day: accusations', () => {
+  it('each player keeps one pending accusation', () => {
+    let s = accuse(day1(), 'p3', 'p1');
+    s = accuse(s, 'p3', 'p2');
     assert.deepEqual(s.day.accusations.map((a) => a.targetId), ['p2']);
+    assert.equal(playerView(s, 'p3').me.accusedId, 'p2');
   });
 
-  it('lets the narrator dismiss an accusation', () => {
-    let s = act(daytime(6), { type: 'day:accuse', actor: as('p4'), targetId: 'p1' });
+  it('nobody accuses themselves or the dead', () => {
+    const s = day1();
+    rejects(s, { type: 'day:accuse', actor: as('p3'), targetId: 'p3' }, 'TARGET_INVALID');
+    rejects(s, { type: 'day:accuse', actor: as('p3'), targetId: 'ghost' }, 'TARGET_INVALID');
+  });
+
+  it('the narrator can dismiss an accusation', () => {
+    let s = accuse(day1(), 'p3', 'p1');
     s = act(s, { type: 'day:dismissAccusation', actor: NARRATOR, accusationId: s.day.accusations[0].id });
-    assert.equal(s.day.accusations.length, 0);
+    assert.deepEqual(s.day.accusations, []);
   });
 
-  it('runs only one vote at a time and only during the day', () => {
-    let s = openVote(daytime(6), 'p3', 'p1');
-    s = act(s, { type: 'day:accuse', actor: as('p4'), targetId: 'p2' });
-    rejects(s, { type: 'day:openVote', actor: NARRATOR, accusationId: s.day.accusations[0].id }, 'VOTE_IN_PROGRESS');
-    rejects(s, { type: 'day:openVote', actor: NARRATOR, accusationId: 'a999' }, 'VOTE_IN_PROGRESS');
-    rejects(act(daytime(6), { type: 'game:end', actor: NARRATOR }), { type: 'day:vote', actor: as('p1'), guilty: true }, 'WRONG_PHASE');
+  it('the vote needs at least one accusation', () => {
+    rejects(day1(), { type: 'day:openVote', actor: NARRATOR }, 'NO_ACCUSATIONS');
   });
 
-  it('does not let the accused vote', () => {
-    const s = openVote(daytime(6), 'p3', 'p1');
-    rejects(s, { type: 'day:vote', actor: as('p1'), guilty: false }, 'CANNOT_VOTE');
-  });
-
-  it('lets voters change or withdraw their ballot while the vote is open', () => {
-    let s = openVote(daytime(6), 'p3', 'p1');
-    s = castVotes(s, { p2: true });
-    s = castVotes(s, { p2: false });
-    assert.deepEqual(s.day.vote.ballots, { p2: false });
-    s = act(s, { type: 'day:vote', actor: as('p2'), guilty: null });
-    assert.deepEqual(s.day.vote.ballots, {});
-    rejects(s, { type: 'day:vote', actor: as('p2'), guilty: 'yes' }, 'INVALID_PAYLOAD');
-  });
-
-  it('closes the ballot box when the narrator closes the vote', () => {
-    const s = close(openVote(daytime(6), 'p3', 'p1'));
-    rejects(s, { type: 'day:vote', actor: as('p2'), guilty: true }, 'VOTE_CLOSED');
-    rejects(s, { type: 'day:closeVote', actor: NARRATOR }, 'VOTE_CLOSED');
-  });
-
-  it('requires closing before confirming', () => {
-    const s = openVote(daytime(6), 'p3', 'p1');
-    rejects(s, { type: 'day:confirm', actor: NARRATOR, accept: true }, 'VOTE_NOT_CLOSED');
-    rejects(daytime(6), { type: 'day:confirm', actor: NARRATOR, accept: true }, 'NO_ACTIVE_VOTE');
-    rejects(close(s), { type: 'day:confirm', actor: NARRATOR }, 'INVALID_PAYLOAD');
-  });
-
-  it('lets the narrator annul a closed vote without effect', () => {
-    let s = openVote(daytime(6), 'p3', 'p1');
-    s = castVotes(s, { p2: true, p3: true, p4: true, p5: true });
-    s = confirm(close(s), false);
-    assert.equal(playerById(s, 'p1').alive, true);
-    assert.equal(s.day.vote, null);
-    assert.equal(s.history.length, 0);
-    assert.equal(s.log.at(-1).type, 'vote_cancelled');
-  });
-
-  it('allows several eliminations in the same day', () => {
-    let s = daytime(8);
-    s = voteOut(s, 'p1', 'p5');
-    s = voteOut(s, 'p1', 'p6');
-    assert.equal(s.phase, 'day');
-    assert.equal(s.round, 1);
-    assert.equal(playerById(s, 'p5').alive, false);
-    assert.equal(playerById(s, 'p6').alive, false);
-  });
-
-  it('leaves eliminated players out of accusations, votes and night requests (R6)', () => {
-    let s = voteOut(daytime(7), 'p1', 'p7');
-    rejects(s, { type: 'day:accuse', actor: as('p7'), targetId: 'p1' }, 'PLAYER_DEAD');
-    rejects(s, { type: 'day:accuse', actor: as('p1'), targetId: 'p7' }, 'TARGET_INVALID');
-    rejects(s, { type: 'night:request', actor: as('p7'), wanted: true }, 'PLAYER_DEAD');
-    s = openVote(s, 'p3', 'p1');
-    rejects(s, { type: 'day:vote', actor: as('p7'), guilty: true }, 'PLAYER_DEAD');
-    assert.equal(close(s).day.vote.result.eligibleCount, 5);
+  it('candidates are the distinct living accused', () => {
+    const players = [{ id: 'a', alive: true }, { id: 'b', alive: false }];
+    assert.deepEqual(candidatesFrom([{ targetId: 'a' }, { targetId: 'a' }, { targetId: 'b' }], players), ['a']);
   });
 });
 
-describe('calling the night (R4)', () => {
-  it('needs more than half of the living players', () => {
-    assert.equal(nightRequestsNeeded(6), 4);
-    assert.equal(nightRequestsNeeded(7), 4);
-    assert.equal(nightRequestsNeeded(5), 3);
-    assert.equal(nightRequestsNeeded(2), 2);
+describe('day: vote (D-6, option A)', () => {
+  it('the accused with most guilty votes is eliminated', () => {
+    const s = dayVote(day1(), { p3: 'p1', p4: 'p1', p5: 'p2', p6: 'p1', p7: 'p2' });
+    assert.equal(s.players.find((p) => p.id === 'p1').eliminatedBy, 'vote');
+    assert.equal(s.history.at(-1).eliminatedId, 'p1');
   });
 
-  it('does not let the narrator force the night without a majority (original mode)', () => {
-    let s = daytime(6);
-    for (const id of ['p1', 'p2', 'p3']) s = act(s, { type: 'night:request', actor: as(id), wanted: true });
-    rejects(s, { type: 'phase:advance', actor: NARRATOR, to: 'night' }, 'NIGHT_NOT_REQUESTED');
-    s = act(s, { type: 'night:request', actor: as('p4'), wanted: true });
-    s = act(s, { type: 'phase:advance', actor: NARRATOR, to: 'night' });
-    assert.equal(s.phase, 'night');
-    assert.equal(s.round, 1);
+  it('a tie eliminates nobody', () => {
+    const s = dayVote(day1(), { p3: 'p1', p4: 'p2' });
+    assert.equal(s.history.at(-1).eliminatedId, null);
+    assert.equal(alive(s).length, 8);
   });
 
-  it('lets players withdraw their request', () => {
-    let s = daytime(6);
-    s = act(s, { type: 'night:request', actor: as('p1'), wanted: true });
-    s = act(s, { type: 'night:request', actor: as('p1'), wanted: true });
-    assert.deepEqual(s.day.nightRequests, ['p1']);
-    s = act(s, { type: 'night:request', actor: as('p1'), wanted: false });
-    assert.deepEqual(s.day.nightRequests, []);
-    rejects(s, { type: 'night:request', actor: as('p1'), wanted: 'yes' }, 'INVALID_PAYLOAD');
+  it('nobody votes for themselves; only candidates can be voted', () => {
+    let s = accuse(accuse(day1(), 'p3', 'p1'), 'p1', 'p2');
+    s = act(s, { type: 'day:openVote', actor: NARRATOR });
+    rejects(s, { type: 'day:vote', actor: as('p1'), targetId: 'p1' }, 'CANNOT_VOTE_SELF');
+    rejects(s, { type: 'day:vote', actor: as('p3'), targetId: 'p5' }, 'TARGET_INVALID');
+    s = vote(s, 'p1', 'p2');
+    assert.deepEqual(s.day.vote.ballots, { p1: 'p2' });
   });
 
-  it('only counts requests from living players', () => {
-    let s = daytime(7);
-    s = act(s, { type: 'night:request', actor: as('p7'), wanted: true });
-    s = voteOut(s, 'p1', 'p7');
-    for (const id of ['p1', 'p2', 'p3']) s = act(s, { type: 'night:request', actor: as(id), wanted: true });
-    rejects(s, { type: 'phase:advance', actor: NARRATOR, to: 'night' }, 'NIGHT_NOT_REQUESTED');
+  it('abstaining (null) counts nobody, and a ballot can be withdrawn', () => {
+    let s = accuse(day1(), 'p3', 'p1');
+    s = act(s, { type: 'day:openVote', actor: NARRATOR });
+    s = vote(s, 'p4', null);
+    assert.equal(tallyVote(s.day.vote, s.players).votedCount, 1);
+    s = act(s, { type: 'day:vote', actor: as('p4'), withdraw: true });
+    assert.equal(tallyVote(s.day.vote, s.players).votedCount, 0);
   });
 
-  it('cannot start while a vote is open', () => {
-    let s = openVote(daytime(6), 'p3', 'p1');
-    for (const id of ['p2', 'p3', 'p4', 'p5', 'p6']) s = act(s, { type: 'night:request', actor: as(id), wanted: true });
+  it('progress is public while open; voters are shown once closed', () => {
+    let s = accuse(day1(), 'p3', 'p1');
+    s = act(s, { type: 'day:openVote', actor: NARRATOR });
+    s = vote(s, 'p4', 'p1');
+    const open = publicView(s).vote;
+    assert.equal(open.votedCount, 1);
+    assert.equal(open.result, undefined);
+    s = act(s, { type: 'day:closeVote', actor: NARRATOR });
+    assert.deepEqual(publicView(s).vote.result.votersByCandidate, { p1: ['p4'] });
+  });
+
+  it('the narrator can hide who voted whom', () => {
+    let s = accuse(day1({ showVotes: false }), 'p3', 'p1');
+    s = act(s, { type: 'day:openVote', actor: NARRATOR });
+    s = vote(s, 'p4', 'p1');
+    s = act(s, { type: 'day:closeVote', actor: NARRATOR });
+    assert.equal(publicView(s).vote.result.votersByCandidate, null);
+  });
+
+  it('the narrator confirms; annulling allows a new vote, confirming closes the day\'s vote', () => {
+    let s = accuse(day1(), 'p3', 'p1');
+    s = act(s, { type: 'day:openVote', actor: NARRATOR });
+    s = vote(s, 'p4', 'p1');
+    s = act(s, { type: 'day:closeVote', actor: NARRATOR });
+    s = act(s, { type: 'day:confirm', actor: NARRATOR, accept: false });
+    assert.equal(alive(s).length, 8);
+    s = dayVote(s, { p4: 'p1', p5: 'p1' });
+    assert.equal(alive(s).length, 7);
+    rejects(s, { type: 'day:accuse', actor: as('p4'), targetId: 'p2' }, 'VOTE_CLOSED');
+    rejects(s, { type: 'day:openVote', actor: NARRATOR }, 'VOTE_ALREADY_HELD');
+  });
+
+  it('the night cannot start during an open vote', () => {
+    let s = accuse(day1(), 'p3', 'p1');
+    s = act(s, { type: 'day:openVote', actor: NARRATOR });
     rejects(s, { type: 'phase:advance', actor: NARRATOR, to: 'night' }, 'VOTE_IN_PROGRESS');
   });
 
-  it('happens every round in the classic variant, without requests (V1)', () => {
-    const s = daytime(6, { mode: 'classic' });
-    rejects(s, { type: 'night:request', actor: as('p1'), wanted: true }, 'NOT_IN_MODE');
-    assert.equal(act(s, { type: 'phase:advance', actor: NARRATOR, to: 'night' }).phase, 'night');
+  it('a candidate removed during the vote drops out of it', () => {
+    let s = accuse(accuse(day1(), 'p3', 'p1'), 'p4', 'p2');
+    s = act(s, { type: 'day:openVote', actor: NARRATOR });
+    s = vote(s, 'p5', 'p2');
+    s = act(s, { type: 'player:remove', actor: NARRATOR, playerId: 'p2' });
+    assert.deepEqual(s.day.vote.candidateIds, ['p1']);
+    assert.deepEqual(s.day.vote.ballots, {});
   });
 });

@@ -1,5 +1,7 @@
 # Arquitectura
 
+Hombres Lobos Online parte de una copia de `atapia9/mafia-online` (ver [`decisiones.md`](decisiones.md)): se conservaron el servidor, la seguridad y la estructura del cliente, y se reescribieron las reglas.
+
 El proyecto tiene dos piezas:
 
 - **Servidor**: Node.js 24, Express 5 y Socket.IO 4.8. Guarda las salas, aplica las reglas y decide qué ve cada persona.
@@ -39,35 +41,52 @@ El juego es un reductor: `applyAction(state, action, ctx)` devuelve `{ ok, state
 
 - Nunca modifica el estado de entrada.
 - El azar (`ctx.rng`) y la hora (`ctx.now`) llegan como parámetros, así que las pruebas son deterministas.
+- Cada acción deja un evento en el registro, que solo ve el narrador.
 
 | Archivo | Contenido |
 |---|---|
-| `constants.js` | Modos, fases, roles y límites. |
-| `roles.js` | Tabla de mafiosos y reparto aleatorio (Fisher–Yates sobre `crypto.randomInt`). |
+| `constants.js` | Fases, pasos de la noche, roles, equipos, causas de muerte y límites (6–18 jugadores). |
+| `setup.js` | Composición de la partida, validación (D-10) y reparto con Fisher–Yates sobre `crypto.randomInt`. |
+| `roles/*.js` | Un módulo por rol: su ficha (`id`, `label`, `team`, `unique`, `nightSteps`) y su lógica. Ver [`roles.md`](roles.md). |
+| `night.js` | Orden fijo de la noche, salto de pasos sin actores y resolución (protección → conversión → curación → muertes). |
+| `day.js` | Votación entre acusados con mayoría relativa, voto doble y desempate del Alcalde. |
+| `victory.js` | Aldeanos: no queda ningún lobo. Lobos: igualan o superan a los demás. |
 | `names.js` | Limpieza de nombres: lista de caracteres permitidos, NFC y 20 caracteres como máximo. |
-| `day.js` | Umbral de la votación y de la petición de noche. |
-| `night.js` | Resolución de la noche: unanimidad, papeletas de mafia, Doctor. |
-| `victory.js` | Victoria y puntuación. |
-| `game.js` | Máquina de estados: `lobby → dawn → day ⇄ night → ended`. |
-| `views.js` | Las únicas proyecciones que salen del servidor (ADR-003). |
+| `engine.js` | Máquina de estados: `lobby → start → night → dawn → day → night … → ended`. |
+| `views.js` | Las únicas proyecciones que salen del servidor (ADR-002). |
 | `summary.js` | Resumen final en Markdown y en texto para WhatsApp. |
+
+### Eventos de Socket.IO
+
+| Evento | Quién lo envía | Qué hace |
+|---|---|---|
+| `room:create`, `narrator:resume` | narrador | Crea la sala o la retoma con su token. |
+| `room:configure` | narrador | Roles especiales, número de lobos y opciones. |
+| `game:start`, `phase:advance`, `timer:set`, `game:end`, `game:rematch` | narrador | Reparte roles y mueve las fases. |
+| `night:skipStep`, `night:wolvesRevote` | narrador | Salta el paso actual de la noche, o pide a los lobos que voten de nuevo. |
+| `hunter:skip` | narrador | Omite el disparo del Cazador. |
+| `day:dismissAccusation`, `day:openVote`, `day:closeVote`, `day:confirm` | narrador | Controla la votación del día. |
+| `room:join`, `room:rejoin`, `room:leave` | jugador | Entra, vuelve con su token o sale de la sala de espera. |
+| `night:act` | jugador | Única acción nocturna: su significado depende del paso actual (consulta, protección, voto de lobo, conversión, pociones). |
+| `hunter:shoot` | jugador | Disparo del Cazador muerto. |
+| `day:accuse`, `day:vote` | jugador | Acusa y vota a un acusado (o se abstiene). |
 
 ### Qué ve cada uno
 
 | Evento | Destino | Contenido |
 |---|---|---|
-| `state:public` | toda la sala | Fase, ronda, jugadores (sin roles hasta el final), votación en curso (solo conteos), papeletas entregadas (solo el número). |
-| `state:private` | un jugador | `{ me }`: su rol, sus compañeros si es mafioso, los resultados de la Vidente, su voto y su papeleta. |
-| `state:narrator` | el narrador | Todo: roles, votos, papeletas, registro y resumen. |
+| `state:public` | toda la sala | Fase, ronda, composición (qué roles hay, no quién los tiene), jugadores vivos y muertos, acusaciones, progreso de la votación, muertes del amanecer y disparo pendiente. Nunca el paso de la noche ni los objetivos. |
+| `state:private` | un jugador | `{ me }`: su rol y equipo; si es lobo, la manada y quién es el alfa; si le toca, su panel de la noche; los resultados de la Vidente, los informes de la Niña, las pociones de la Bruja, etc. **solo para su dueño**. |
+| `state:narrator` | el narrador | Todo: roles, acciones de la noche, votos con peso, registro y resumen. |
 
-Las pruebas recorren partidas completas, tanto con las vistas como con los mensajes reales de la red. Comprueban que ningún jugador recibe información secreta fuera de su `me`, ni por el nombre del campo ni por su valor.
+Las pruebas recorren partidas completas con todos los roles, tanto con las vistas como con los mensajes reales de la red. Comprueban que ningún jugador recibe información secreta fuera de su `me`, ni por el nombre del campo ni por su valor.
 
 ### Seguridad
 
 - **Validación de entradas:** se descartan las claves desconocidas, así que un cliente no puede cambiar la acción ni el actor.
 - **Nombres:** se guardan solo letras, números, emoji y `.` `-` `'` `’`.
 - **Tokens:** los del narrador y de cada asiento son aleatorios, de 128 bits.
-- **Asiento perdido:** si alguien pierde su token, el narrador tiene que aprobar que recupere el asiento (ADR-008).
+- **Asiento perdido:** si alguien pierde su token, el narrador tiene que aprobar que recupere el asiento (ADR-003).
 - **Frecuencia:** hay un límite por conexión, y quien insiste en superarlo queda desconectado.
 - **Orígenes:** solo se aceptan conexiones desde el mismo origen y desde `CORS_ORIGIN`.
 - **Cabeceras:** Helmet añade las cabeceras de seguridad y una CSP estricta, sin scripts en línea.
@@ -91,14 +110,14 @@ El diseño ya lo facilita, porque la lógica del juego es pura y su estado es un
 |---|---|
 | `index.html` | Portada: narrador o jugador. |
 | `narrador.html`, `js/narrator.js` | Pantalla del narrador. |
-| `jugador.html`, `js/player.js` | Pantalla del jugador. Las tarjetas con secretos están tapadas por defecto (ADR-010). |
+| `jugador.html`, `js/player.js` | Pantalla del jugador. El rol y el panel de la noche están tapados por defecto, y todos los vivos ven el mismo panel cubierto, así nadie sabe a quién le toca. |
 | `js/player-logic.js`, `js/format.js` | Lógica sin DOM, probada en Node. |
 | `js/net.js`, `js/server-url.js` | Conexión al servidor. La URL sale de `config.js` o del parámetro `?server=`, y solo se acepta https (o http en localhost). |
 | `js/dom.js` | Utilidades del DOM. Conservan el foco al redibujar y esperan a que termine un clic antes de hacerlo. |
 | `js/rules.js`, `js/rules-ui.js` | Texto de las reglas y modal. |
 | `js/qr.js`, `js/summary-image.js` | QR del enlace e imagen PNG del resultado. |
 | `config.js` | URL del servidor. Se genera en el despliegue de Pages. |
-| `vendor/` | `socket.io-client` y `uqr`, copiados con `npm run vendor`. Las pruebas comprueban que coinciden con `node_modules` (ADR-006). |
+| `vendor/` | `socket.io-client` y `uqr`, copiados con `npm run vendor`. Las pruebas comprueban que coinciden con `node_modules`. |
 
 ### Sesiones del jugador
 
@@ -110,12 +129,12 @@ El diseño ya lo facilita, porque la lógica del juego es pura y su estado es un
 
 `npm test` ejecuta `node --test` sobre `tests/**/*.test.js`:
 
-- `tests/game/`: las reglas, incluidas las pruebas de fugas en las vistas.
+- `tests/game/`: las reglas (una prueba por rol en `tests/game/roles/`), incluidas las pruebas de fugas en las vistas.
 - `tests/server/`: piezas del servidor (tokens, validación, límites, configuración, archivos copiados en `vendor/`).
 - `tests/integration/`: salas completas con clientes reales de Socket.IO: partida completa, reconexión, solicitud de asiento, seguridad y orígenes.
 - `tests/client/`: módulos del cliente sin DOM, y comprobaciones estáticas de las páginas (sin scripts en línea ni `innerHTML`).
 
-`scripts/bots.js` añade jugadores simulados para probar en el navegador (`npm run bots -- CÓDIGO 3`, o `--auto` para que también acusen).
+`npm run test:game` ejecuta solo las reglas. `scripts/bots.js` añade jugadores simulados que usan su habilidad de noche, disparan si son el Cazador y votan (`npm run bots -- CÓDIGO 6`, o `--auto` para que también acusen).
 
 ---
 

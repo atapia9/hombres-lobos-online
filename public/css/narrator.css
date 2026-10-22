@@ -94,3 +94,10 @@
 
 .winner { font-size: 1.8rem; font-weight: 800; margin: 0 0 4px; }
 .closing { font-style: italic; color: var(--muted); }
+
+/* Night steps in fixed order */
+.steps { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 6px; }
+.step { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); }
+.step.is-done { opacity: 0.75; }
+.step.is-current { border-color: var(--night); border-width: 2px; }
+.deck { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }

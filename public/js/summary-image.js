@@ -52,36 +52,36 @@ export function drawSummary(canvas, data) {
   let y = PAD;
   ctx.font = `800 96px ${sans}`;
   ctx.fillStyle = '#ffffff';
-  ctx.fillText('MAFIA', PAD, y);
+  ctx.fillText('HOMBRES LOBOS', PAD, y);
   y += 120;
-  y = paragraph(ctx, `${data.dateLabel} · ${data.modeLabel}`, PAD, y, { font: `400 30px ${sans}`, color: '#b8bfce', lineHeight: 40, maxLines: 2 });
-  y = paragraph(ctx, `${data.playerCount} jugadores · ${data.mafiaCount} en la mafia`, PAD, y, { font: `400 30px ${sans}`, color: '#b8bfce', lineHeight: 40 });
+  y = paragraph(ctx, `${data.dateLabel} · ${data.playerCount} jugadores`, PAD, y, { font: `400 30px ${sans}`, color: '#b8bfce', lineHeight: 40, maxLines: 2 });
+  y = paragraph(ctx, data.compositionLabel, PAD, y, { font: `400 26px ${sans}`, color: '#b8bfce', lineHeight: 36, maxLines: 3 });
 
   y += 40;
   y = paragraph(ctx, data.winnerLabel, PAD, y, {
     font: `800 72px ${sans}`,
-    color: data.winner === 'mafia' ? '#ff6b70' : data.winner === 'honest' ? '#5fd17c' : '#ffffff',
+    color: data.winner === 'wolves' ? '#ff6b70' : data.winner === 'village' ? '#5fd17c' : '#ffffff',
     lineHeight: 84,
   });
 
   y += 30;
   for (const team of data.teams) {
     ctx.font = `700 36px ${sans}`;
-    ctx.fillStyle = team.label === 'Mafia' ? '#ff6b70' : '#5fd17c';
+    ctx.fillStyle = team.label === 'Lobos' ? '#ff6b70' : '#5fd17c';
     ctx.fillText(team.label, PAD, y);
     y += 50;
-    const names = team.members.map((m) => (m.roleLabel ? `${m.name} (${m.roleLabel})` : m.name)).join(', ');
+    const names = team.members.map((m) => `${m.name} (${m.details.split(',')[0]})`).join(', ');
     y = paragraph(ctx, names || '—', PAD, y, { font: `400 32px ${sans}`, color: '#eceef3', lineHeight: 44, maxLines: 5 });
     y += 24;
   }
 
   // Eliminations by round, as many as fit above the closing line.
-  const lines = data.rounds.flatMap(({ round, items }) =>
-    items.map((item) => `Ronda ${round} · ${item.phase}: ${item.name ? `${item.name} — ` : ''}${item.text}`));
+  const lines = data.rounds.flatMap(({ round, eliminations }) =>
+    eliminations.map((item) => `Ronda ${round} · ${item.phase}: ${item.name ? `${item.name} — ` : ''}${item.text}`));
   if (lines.length > 0) {
     ctx.font = `700 32px ${sans}`;
     ctx.fillStyle = '#ffffff';
-    ctx.fillText('Eliminaciones', PAD, y);
+    ctx.fillText('Ronda por ronda', PAD, y);
     y += 46;
     const limit = H - PAD - 260;
     for (const [index, line] of lines.entries()) {
@@ -94,14 +94,14 @@ export function drawSummary(canvas, data) {
     }
   }
 
-  let bottom = H - PAD - 44;
+  let bottom = H - PAD - 40;
   ctx.font = `400 26px ${sans}`;
   ctx.fillStyle = '#8d95a8';
-  ctx.fillText(data.credit, PAD, bottom);
+  paragraph(ctx, data.credit, PAD, bottom, { font: `400 22px ${sans}`, color: '#8d95a8', lineHeight: 30, maxLines: 2 });
   if (data.closingLine) {
     ctx.font = `italic 400 34px ${sans}`;
     const lines = wrap(ctx, `«${data.closingLine}»`, W - PAD * 2);
-    bottom -= 30 + lines.length * 46;
+    bottom -= 20 + lines.length * 46;
     paragraph(ctx, `«${data.closingLine}»`, PAD, bottom, { font: `italic 400 34px ${sans}`, color: '#eceef3', lineHeight: 46 });
   }
   return canvas;
