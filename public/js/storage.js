@@ -24,3 +24,29 @@ export function remove(key) {
     // Ignore.
   }
 }
+
+// Per-tab storage: survives a reload of this tab, unlike localStorage it is not shared with other tabs.
+export function loadTab(key) {
+  try {
+    const raw = globalThis.sessionStorage?.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveTab(key, value) {
+  try {
+    globalThis.sessionStorage?.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore.
+  }
+}
+
+export function removeTab(key) {
+  try {
+    globalThis.sessionStorage?.removeItem(key);
+  } catch {
+    // Ignore.
+  }
+}

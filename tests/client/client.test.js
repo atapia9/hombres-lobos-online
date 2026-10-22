@@ -159,7 +159,7 @@ describe('QR code', () => {
 
 describe('static pages', () => {
   it('load scripts as modules and contain no inline scripts (CSP script-src self)', async () => {
-    for (const page of ['index.html', 'narrador.html']) {
+    for (const page of ['index.html', 'narrador.html', 'jugador.html']) {
       const html = await readFile(join(root, 'public', page), 'utf8');
       assert.match(html, /<html lang="es">/);
       assert.match(html, /<meta name="viewport"/);
@@ -170,7 +170,7 @@ describe('static pages', () => {
   });
 
   it('never use innerHTML in client code (user text goes through textContent)', async () => {
-    for (const file of ['dom.js', 'narrator.js', 'rules-ui.js', 'qr.js', 'summary-image.js', 'net.js', 'landing.js']) {
+    for (const file of ['dom.js', 'narrator.js', 'player.js', 'player-logic.js', 'rules-ui.js', 'qr.js', 'summary-image.js', 'net.js', 'landing.js', 'storage.js']) {
       const source = (await readFile(join(root, 'public/js', file), 'utf8'))
         .replace(/\/\*[\s\S]*?\*\//g, '')
         .replace(/\/\/.*$/gm, ''); // comments may mention the forbidden APIs
