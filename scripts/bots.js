@@ -1,10 +1,12 @@
 // Development only: simulated players that join a room and act on their own (R13).
 //
-//   npm run bots -- <ROOM_CODE> [count=3] [--server=http://localhost:3000]
+//   npm run bots -- <ROOM_CODE> [count=3] [--server=http://localhost:3000] [--auto]
 //
 // Bots vote at random, ask for the night when a human already has, and always
 // hand in their night ballot (a random victim if they are mafia), so a game can
 // be tested with only a few real tabs.
+// With --auto they also accuse at random and ask for the night after a vote,
+// so the narrator can run whole days without human players.
 
 import { io } from 'socket.io-client';
 
@@ -13,9 +15,10 @@ const flags = Object.fromEntries(args.filter((a) => a.startsWith('--')).map((a) 
 const [code, countArg = '3'] = args.filter((a) => !a.startsWith('--'));
 const server = flags.server ?? 'http://localhost:3000';
 const count = Number(countArg);
+const auto = 'auto' in flags;
 
 if (!code || !Number.isInteger(count) || count < 1 || count > 19) {
-  console.error('Uso: npm run bots -- <CÓDIGO> [cantidad 1-19] [--server=http://localhost:3000]');
+  console.error('Uso: npm run bots -- <CÓDIGO> [cantidad 1-19] [--server=http://localhost:3000] [--auto]');
   process.exit(1);
 }
 
@@ -81,8 +84,14 @@ function startBot(index) {
           const guilty = Math.random() < 0.6;
           if ((await send('day:vote', { guilty })).ok) log(guilty ? 'votó culpable' : 'votó no culpable');
         }
+        const pending = state.accusations.some((a) => a.accuserId === me.id);
+        if (auto && !vote && !pending && Math.random() < 0.25) {
+          const target = pick(others.filter((p) => !(me.partnerIds ?? []).includes(p.id)));
+          if (target && (await send('day:accuse', { targetId: target.id })).ok) log(`acusa a ${target.name}`);
+        }
         const requests = state.nightRequests;
-        if (requests && !me.nightRequested && requests.count > 0) {
+        const votedToday = state.history.some((entry) => entry.type === 'vote' && entry.round === state.round);
+        if (requests && !me.nightRequested && (requests.count > 0 || (auto && votedToday))) {
           if ((await send('night:request', { wanted: true })).ok) log('pidió la noche');
         }
       }
@@ -106,6 +115,7 @@ function startBot(index) {
     }
   }
 
+  if (auto) setInterval(() => later(act), 3000);
   return socket;
 }
 
