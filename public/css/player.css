@@ -1,0 +1,109 @@
+/* Player screen: phone first. */
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--focus);
+  border-radius: 8px;
+  z-index: 20;
+}
+.skip-link:focus { top: 8px; }
+
+.player-page { max-width: 640px; display: grid; gap: var(--gap); }
+
+.status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+.status-strip .phase-title { font-size: 1.4rem; }
+
+/* Secret cards: role and night ballot (ADR-010). */
+.secret {
+  border: 2px dashed var(--border);
+  text-align: center;
+  padding: 20px 16px;
+}
+.secret.is-revealed {
+  border-style: solid;
+  border-color: var(--warn);
+  text-align: left;
+}
+
+.secret-warning {
+  margin: -20px -16px 16px;
+  padding: 10px 16px;
+  font-weight: 700;
+  color: #1a1300;
+  background: repeating-linear-gradient(135deg, #e0a83a 0 14px, #f0bf55 14px 28px);
+  border-radius: 10px 10px 0 0;
+}
+
+.role-title { font-size: 2rem; font-weight: 900; margin: 0 0 4px; }
+.role-mafia .role-title { color: var(--accent-strong); }
+.role-honest .role-title { color: var(--ok); }
+.role-seer .role-title, .role-doctor .role-title { color: var(--info); }
+
+.secret-status { font-size: 1.05rem; margin: 8px 0 12px; }
+
+/* Options (night ballot) */
+.options { display: grid; gap: 8px; border: 0; padding: 0; margin: 12px 0; }
+.options legend { font-weight: 700; margin-bottom: 6px; }
+.option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  min-height: 52px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-weight: 600;
+  margin: 0;
+  cursor: pointer;
+}
+.option input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+.option:has(input:checked) { border-color: var(--accent); }
+.option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
+.option .note { margin-left: auto; font-weight: 400; color: var(--muted); font-size: 0.85rem; }
+
+/* Day vote */
+.vote-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+.btn-guilty[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.btn-innocent[aria-pressed='true'] { background: var(--ok); border-color: var(--ok); color: #06210f; }
+
+.announcement {
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 12px;
+  border-left: 4px solid var(--night);
+  background: var(--surface-2);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.timer { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.timer.is-over { color: var(--accent-strong); }
+
+.section-gap { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; }
+
+.result-big { font-size: 1.8rem; font-weight: 900; margin: 0 0 4px; }
+
+.score-table { width: 100%; border-collapse: collapse; }
+.score-table th, .score-table td { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+.score-table td:last-child, .score-table th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+
+.field-error { color: var(--accent-strong); font-size: 0.9rem; margin: 4px 0 0; }
+
+input.code-input {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-size: 1.4rem;
+  font-weight: 800;
+  text-align: center;
+}
