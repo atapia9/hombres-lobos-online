@@ -1,0 +1,19 @@
+# Render Blueprint for the game server (free plan). See docs/despliegue.md.
+services:
+  - type: web
+    name: mafia-online
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      # Origin of the GitHub Pages site, without a path (e.g. https://atapia9.github.io).
+      - key: CORS_ORIGIN
+        sync: false
