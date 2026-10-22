@@ -190,3 +190,30 @@ describe('timer', () => {
     assert.equal(s.timer, null);
   });
 });
+
+describe('ids that look like built-in object keys', () => {
+  it('rejects ids that could touch an object prototype', () => {
+    rejects(createGame(), { type: 'player:join', actor: as('__proto__'), name: 'Proto' }, 'INVALID_PAYLOAD');
+    rejects(createGame(), { type: 'player:join', actor: as('_x'), name: 'Guion' }, 'INVALID_PAYLOAD');
+  });
+
+  it('handles ids such as "constructor" or "toString" through a whole game', async () => {
+    const { playerView } = await import('../../server/game/index.js');
+    const ids = ['constructor', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf', 'p6'];
+    let s = createGame({ mode: 'classic' });
+    for (const id of ids) s = act(s, { type: 'player:join', actor: as(id), name: `N ${id}` });
+    s = act(s, { type: 'game:start', actor: NARRATOR });
+    // identity RNG: constructor + toString mafia, valueOf seer, hasOwnProperty doctor
+    s = act(s, { type: 'phase:advance', actor: NARRATOR, to: 'day' });
+    s = act(s, { type: 'phase:advance', actor: NARRATOR, to: 'night' });
+    assert.deepEqual(playerView(s, 'constructor').me.partnerPicks, { toString: null });
+    assert.equal(playerView(s, 'hasOwnProperty').me.abilityTargetId, null);
+    s = act(s, { type: 'phase:advance', actor: NARRATOR, to: 'day' });
+    assert.equal(s.doctorLastTargetId, null);
+    s = act(s, { type: 'game:end', actor: NARRATOR });
+    for (const id of ids) {
+      assert.equal(typeof s.scoreboard[id], 'number', `scoreboard of ${id}`);
+      assert.equal(Object.hasOwn(s.scoreboard, id), true);
+    }
+  });
+});

@@ -39,6 +39,14 @@ export function isMode(value) {
   return Object.values(MODES).includes(value);
 }
 
+/**
+ * Reads an own property only. Maps keyed by player id (ballots, scores…) must
+ * never return inherited values such as Object.prototype.constructor.
+ */
+export function own(map, key) {
+  return Object.hasOwn(map, key) ? map[key] : undefined;
+}
+
 /** Seer and doctor play for the honest team. */
 export function teamOf(role) {
   return role === ROLES.MAFIA ? TEAMS.MAFIA : TEAMS.HONEST;

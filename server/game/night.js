@@ -1,4 +1,4 @@
-import { MODES, ROLES } from './constants.js';
+import { MODES, ROLES, own } from './constants.js';
 
 /** Living players with a special night ability (classic variant only). */
 export function usesAbility(state, player) {
@@ -37,7 +37,7 @@ export function resolveNight(state) {
   let saved = false;
   if (intendedVictimId && state.mode === MODES.CLASSIC) {
     const doctor = alive.find((p) => p.role === ROLES.DOCTOR);
-    saved = Boolean(doctor) && state.night.abilities[doctor.id] === intendedVictimId;
+    saved = Boolean(doctor) && own(state.night.abilities, doctor.id) === intendedVictimId;
   }
 
   return {

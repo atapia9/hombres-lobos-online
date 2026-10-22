@@ -9,6 +9,7 @@ import {
   ROLES,
   WINNERS,
   isMode,
+  own,
   teamOf,
 } from './constants.js';
 import { nameKey, normalizeName } from './names.js';
@@ -18,7 +19,8 @@ import { resolveNight } from './night.js';
 import { checkWinner, computeScores } from './victory.js';
 import { cryptoRng } from './rng.js';
 
-const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+// Ids start with a letter or digit, so keys such as __proto__ can never be used.
+const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const LOG_LIMIT = 5000;
 const IN_GAME = [PHASES.DAWN, PHASES.DAY, PHASES.NIGHT];
 
@@ -175,7 +177,7 @@ function endGame(state, winner, reason, env) {
   state.day.vote = null;
   state.scores = computeScores(state, winner);
   for (const [id, points] of Object.entries(state.scores)) {
-    state.scoreboard[id] = (state.scoreboard[id] ?? 0) + points;
+    state.scoreboard[id] = (own(state.scoreboard, id) ?? 0) + points;
   }
   env.emit('game_ended', {
     winner,
@@ -198,7 +200,7 @@ function closeNight(state, env) {
   const doctor = state.mode === MODES.CLASSIC
     ? state.players.find((p) => p.alive && p.role === ROLES.DOCTOR)
     : null;
-  state.doctorLastTargetId = doctor ? state.night.abilities[doctor.id] ?? null : null;
+  state.doctorLastTargetId = doctor ? own(state.night.abilities, doctor.id) ?? null : null;
   state.lastNight = { round: state.round, ...outcome };
   state.history.push({ round: state.round, phase: PHASES.NIGHT, type: 'night', ...outcome });
   env.emit('night_resolved', {
@@ -231,7 +233,7 @@ const HANDLERS = {
     if (!name) return 'NAME_INVALID';
     if (s.players.some((p) => nameKey(p.name) === nameKey(name))) return 'NAME_TAKEN';
     s.players.push(newPlayer(id, name));
-    s.scoreboard[id] ??= 0;
+    if (!Object.hasOwn(s.scoreboard, id)) s.scoreboard[id] = 0;
     env.emit('player_joined', { playerId: id, name });
   }),
 

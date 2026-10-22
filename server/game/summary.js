@@ -1,7 +1,7 @@
 // Shareable end-of-game summary (ADR-011), in Markdown and in WhatsApp-style plain text.
 // User-facing text is in Spanish; names are already limited to safe characters (names.js).
 
-import { MODES, PHASES, ROLES, TEAMS, WINNERS, teamOf } from './constants.js';
+import { MODES, PHASES, ROLES, TEAMS, WINNERS, own, teamOf } from './constants.js';
 
 export const MODE_LABELS = Object.freeze({
   [MODES.ORIGINAL]: 'Original de Davýdov',
@@ -86,7 +86,7 @@ export function summaryData(state, { now = 0, timeZone = 'UTC', locale = 'es-MX'
 
   const scores = state.config.showScore && state.scores
     ? state.players
-      .map((p) => ({ name: p.name, points: state.scores[p.id] ?? 0, total: state.scoreboard[p.id] ?? 0 }))
+      .map((p) => ({ name: p.name, points: own(state.scores, p.id) ?? 0, total: own(state.scoreboard, p.id) ?? 0 }))
       .sort((a, b) => b.points - a.points || b.total - a.total || a.name.localeCompare(b.name, 'es'))
     : null;
 

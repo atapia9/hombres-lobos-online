@@ -4,7 +4,7 @@
 // - playerView: one player. Adds that player's own secrets (`me`).
 // - narratorView: the narrator only. Everything, including the log.
 
-import { MAX_PLAYERS, MIN_PLAYERS, MODES, PHASES, ROLES, teamOf } from './constants.js';
+import { MAX_PLAYERS, MIN_PLAYERS, MODES, PHASES, ROLES, own, teamOf } from './constants.js';
 import { effectiveMafiaCount, maxMafiaCount, recommendedMafiaCount, validateSetup } from './roles.js';
 import { nightRequestsNeeded, tallyVote } from './day.js';
 import { nightProgress, resolveNight } from './night.js';
@@ -128,14 +128,14 @@ export function playerView(state, playerId) {
     mine.ballotSubmitted = Object.hasOwn(ballots, me.id);
     mine.ballotTargetId = mine.ballotSubmitted ? ballots[me.id] : null;
     if (me.role === ROLES.SEER || me.role === ROLES.DOCTOR) {
-      mine.abilityTargetId = abilities[me.id] ?? null;
+      mine.abilityTargetId = own(abilities, me.id) ?? null;
     }
     // Classic variant: the mafia "wake up together" and see each other's picks (V2).
     if (me.role === ROLES.MAFIA && state.mode === MODES.CLASSIC) {
       mine.partnerPicks = Object.fromEntries(
         mine.partnerIds
           .filter((id) => state.players.find((p) => p.id === id)?.alive)
-          .map((id) => [id, ballots[id] ?? null]),
+          .map((id) => [id, own(ballots, id) ?? null]),
       );
     }
   }
