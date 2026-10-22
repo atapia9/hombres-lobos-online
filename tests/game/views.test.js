@@ -1,241 +1,125 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { narratorView, playerView, publicView } from '../../server/game/index.js';
-import {
-  NARRATOR,
-  act,
-  as,
-  daytime,
-  endNight,
-  goToNight,
-  honestBallots,
-  lobby,
-  mafiaPick,
-  started,
-  voteOut,
-} from '../helpers.js';
 import { leakedPaths } from '../leaks.js';
+import {
+  NARRATOR, act, advance, as, firstNight, lobby, nightAct, playNight, started, voteOut,
+} from '../helpers.js';
 
-/** Asserts that no view leaks hidden information, for the room and every player. */
-function assertNoLeaks(state, label) {
-  const ended = state.phase === 'ended';
-  const leaks = leakedPaths(publicView(state), { ended });
-  assert.deepEqual(leaks, [], `${label}: public view leaks ${leaks.join(', ')}`);
+// 12 players, every role: p1..p3 wolves, p4 alpha, p5 seer, p6 protector, p7 hunter,
+// p8 mayor, p9 spy, p10 witch, p11 p12 villagers.
+const ALL = { alpha: true, seer: true, protector: true, hunter: true, mayor: true, spy: true, witch: true };
+const table = (rules) => started(12, { roles: ALL, wolfCount: 3, ...rules });
 
-  for (const p of state.players) {
-    const view = playerView(state, p.id);
-    const outside = leakedPaths(view, { ended });
-    assert.deepEqual(outside, [], `${label}: view of ${p.id} leaks ${outside.join(', ')}`);
+/** Collects the state after every action of a long game. */
+function snapshots(rules) {
+  const states = [];
+  const keep = (s) => { states.push(s); return s; };
+  let s = keep(table(rules));
+  s = keep(firstNight(s));
+  s = keep(nightAct(s, 'p5', { targetId: 'p1' }));
+  s = keep(nightAct(s, 'p6', { targetId: 'p12' }));
+  for (const id of ['p1', 'p2', 'p3', 'p4']) s = keep(nightAct(s, id, { targetId: 'p7' }));
+  s = keep(nightAct(s, 'p4', { convert: false }));
+  s = keep(nightAct(s, 'p10', { heal: false, poisonTargetId: 'p11' }));
+  s = keep(advance(s, 'dawn'));
+  s = keep(act(s, { type: 'hunter:shoot', actor: as('p7'), targetId: 'p1' }));
+  s = keep(advance(s, 'day'));
+  s = keep(voteOut(s, 'p2'));
+  s = keep(advance(s, 'night'));
+  s = keep(playNight(s, { seer: 'p3', protector: 'p8', wolves: 'p9', convert: true }));
+  s = keep(advance(s, 'day'));
+  s = keep(voteOut(s, 'p3'));
+  s = keep(advance(s, 'night'));
+  s = keep(playNight(s, { seer: 'p4', protector: 'p5', wolves: 'p12' }));
+  s = keep(advance(s, 'day'));
+  s = keep(voteOut(s, 'p4'));
+  s = keep(advance(s, 'night'));
+  s = keep(playNight(s, { seer: 'p9', protector: 'p6', wolves: 'p8' }));
+  if (s.phase !== 'ended') s = keep(voteOut(advance(s, 'day'), 'p9'));
+  return states;
+}
 
-    if (p.role !== 'mafia') {
-      assert.equal(view.me.partnerIds, undefined, `${label}: ${p.id} must not know the mafia`);
-      assert.equal(view.me.partnerPicks, undefined);
+describe('views: nothing secret leaves its owner (ADR-002)', () => {
+  const states = snapshots();
+
+  it('the scripted game reaches the end', () => {
+    assert.equal(states.at(-1).phase, 'ended');
+    assert.equal(states.at(-1).winner, 'village');
+  });
+
+  it('the public view never carries roles, targets or the night step', () => {
+    for (const s of states) assert.deepEqual(leakedPaths(publicView(s)), [], `phase ${s.phase}`);
+  });
+
+  it('a player view carries secrets only under `me`', () => {
+    for (const s of states) {
+      for (const p of s.players) assert.deepEqual(leakedPaths(playerView(s, p.id)), [], `${p.id} in ${s.phase}`);
     }
-    if (p.role !== 'seer') assert.equal(view.me.seerResults, undefined);
-    if (p.role !== 'doctor') assert.equal(view.me.doctorLastTargetId, undefined);
-  }
-}
-
-/** Plays a whole game step by step, checking every intermediate state. */
-function playAndCheck(steps, initial) {
-  let s = initial;
-  assertNoLeaks(s, 'start');
-  for (const [label, step] of steps) {
-    s = step(s);
-    assertNoLeaks(s, label);
-  }
-  return s;
-}
-
-describe('views never leak hidden information (ADR-003)', () => {
-  it('holds during a full original game', () => {
-    const s = playAndCheck([
-      ['start', (x) => act(x, { type: 'game:start', actor: NARRATOR })],
-      ['day 1', (x) => act(x, { type: 'phase:advance', actor: NARRATOR, to: 'day' })],
-      ['accuse', (x) => act(x, { type: 'day:accuse', actor: as('p1'), targetId: 'p3' })],
-      ['open vote', (x) => act(x, { type: 'day:openVote', actor: NARRATOR, accusationId: x.day.accusations[0].id })],
-      ['ballots', (x) => act(act(x, { type: 'day:vote', actor: as('p1'), guilty: true }), { type: 'day:vote', actor: as('p2'), guilty: true })],
-      ['close vote', (x) => act(x, { type: 'day:closeVote', actor: NARRATOR })],
-      ['confirm', (x) => act(x, { type: 'day:confirm', actor: NARRATOR, accept: true })],
-      ['vote out p4', (x) => voteOut(x, 'p1', 'p4')],
-      ['night', (x) => goToNight(x)],
-      ['mafia pick', (x) => mafiaPick(x, 'p5')],
-      ['honest ballots', (x) => honestBallots(x)],
-      ['dawn of day 2', (x) => endNight(x)],
-      ['vote out p1', (x) => voteOut(x, 'p3', 'p1')],
-      ['vote out p2', (x) => voteOut(x, 'p3', 'p2')],
-    ], lobby(7));
-    assert.equal(s.winner, 'honest');
   });
 
-  it('holds during a classic game with seer and doctor', () => {
-    const s = playAndCheck([
-      ['day 1', (x) => act(x, { type: 'phase:advance', actor: NARRATOR, to: 'day' })],
-      ['night 1', (x) => goToNight(x)],
-      ['mafia pick', (x) => mafiaPick(x, 'p5')],
-      ['seer', (x) => act(x, { type: 'night:ability', actor: as('p3'), targetId: 'p1' })],
-      ['doctor', (x) => act(x, { type: 'night:ability', actor: as('p4'), targetId: 'p5' })],
-      ['honest ballots', (x) => honestBallots(x)],
-      ['day 2', (x) => endNight(x)],
-      ['vote out p1', (x) => voteOut(x, 'p3', 'p1')],
-      ['vote out p2', (x) => voteOut(x, 'p3', 'p2')],
-    ], started(6, { mode: 'classic' }));
-    assert.equal(s.winner, 'honest');
+  it('dead roles are public only when the narrator enables it (D-12)', () => {
+    const hidden = states.find((s) => s.phase === 'day');
+    assert.ok(publicView(hidden).players.every((p) => p.role === undefined));
+    const revealed = snapshots({ revealDeadRoles: true }).find((s) => s.phase === 'day');
+    const dead = publicView(revealed).players.filter((p) => !p.alive);
+    assert.ok(dead.length > 0 && dead.every((p) => typeof p.role === 'string'));
+    assert.deepEqual(leakedPaths(publicView(revealed), { revealDead: true }), []);
+  });
+
+  it('every role is revealed at the end', () => {
+    const view = publicView(states.at(-1));
+    assert.ok(view.players.every((p) => typeof p.role === 'string'));
+    assert.equal(view.players.find((p) => p.id === 'p9').originalRole, 'spy');
   });
 });
 
-describe('publicView', () => {
-  it('shows the room without roles before the game ends', () => {
-    const view = publicView(started(6));
-    assert.equal(view.phase, 'dawn');
-    assert.equal(view.mafiaCount, 2);
-    assert.ok(view.players.every((p) => !Object.hasOwn(p, 'role')));
+describe('views: per-player secrets', () => {
+  it('only the hunter is told to shoot', () => {
+    let s = table();
+    s = playNight(firstNight(s), { seer: 'p1', protector: 'p12', wolves: 'p7' });
+    assert.equal(playerView(s, 'p7').me.mustShoot, true);
+    assert.equal(playerView(s, 'p8').me.mustShoot, undefined);
+    assert.deepEqual(publicView(s).pendingShot, { hunterId: 'p7' });
   });
 
-  it('shows the mafia count from the table in the lobby', () => {
-    assert.equal(publicView(lobby(8)).mafiaCount, 3);
+  it('a player sees their own turn and nobody else\'s', () => {
+    const s = firstNight(table());
+    assert.equal(playerView(s, 'p5').me.night.turn, true);
+    assert.equal(playerView(s, 'p6').me.night.turn, false);
+    assert.equal(playerView(s, 'p5').me.night.step, 'seer');
+    assert.equal(playerView(s, 'p6').me.night.step, null);
   });
 
-  it('reveals every role once the game has ended', () => {
-    const s = act(daytime(6), { type: 'game:end', actor: NARRATOR });
-    const roles = publicView(s).players.map((p) => p.role);
-    assert.deepEqual(roles, ['mafia', 'mafia', 'honest', 'honest', 'honest', 'honest']);
-  });
-
-  it('shows only vote progress while open, and who voted guilty once closed (R10)', () => {
-    let s = act(daytime(6), { type: 'day:accuse', actor: as('p3'), targetId: 'p1' });
-    s = act(s, { type: 'day:openVote', actor: NARRATOR, accusationId: s.day.accusations[0].id });
-    s = act(s, { type: 'day:vote', actor: as('p2'), guilty: false });
-    s = act(s, { type: 'day:vote', actor: as('p3'), guilty: true });
-    const open = publicView(s).vote;
-    assert.deepEqual(open, {
-      id: open.id, accusedId: 'p1', accuserId: 'p3', status: 'open', votedCount: 2, eligibleCount: 5, required: 3,
-    });
-    s = act(s, { type: 'day:closeVote', actor: NARRATOR });
-    assert.deepEqual(publicView(s).vote.result, {
-      guiltyCount: 1, notGuiltyCount: 1, abstainedCount: 3, passed: false, guiltyVoterIds: ['p3'],
-    });
-  });
-
-  it('announces the number of mafia ballots in the original mode (R5)', () => {
-    const s = endNight(honestBallots(mafiaPick(goToNight(daytime(6)), 'p3')));
-    assert.deepEqual(publicView(s).lastNight, { round: 1, victimId: 'p3', mafiaBallots: 2 });
-  });
-
-  it('announces neither the ballot count nor the doctor\'s save in the classic variant (V6)', () => {
-    let s = mafiaPick(goToNight(daytime(6, { mode: 'classic' })), 'p5');
-    s = endNight(act(s, { type: 'night:ability', actor: as('p4'), targetId: 'p5' }));
-    assert.deepEqual(publicView(s).lastNight, { round: 1, victimId: null });
-    assert.deepEqual(publicView(s).history, [{ round: 1, phase: 'night', type: 'night', victimId: null }]);
-  });
-
-  it('shows night progress as counts only', () => {
-    const s = honestBallots(goToNight(daytime(6)));
-    assert.deepEqual(publicView(s).night, { submitted: 4, expected: 6 });
-  });
-
-  it('shows the night requests during the day in the original mode', () => {
-    const s = act(daytime(6), { type: 'night:request', actor: as('p2'), wanted: true });
-    assert.deepEqual(publicView(s).nightRequests, { playerIds: ['p2'], count: 1, needed: 4 });
-    assert.equal(publicView(daytime(6, { mode: 'classic' })).nightRequests, null);
-  });
-
-  it('hides the scores when the narrator turns them off', () => {
-    let s = act(daytime(6), { type: 'game:configure', actor: NARRATOR, showScore: false });
-    s = act(s, { type: 'game:end', actor: NARRATOR });
-    assert.equal(publicView(s).scores, null);
-    assert.equal(publicView(s).scoreboard, null);
+  it('unknown players get no view', () => {
+    assert.equal(playerView(table(), 'ghost'), null);
   });
 });
 
-describe('playerView', () => {
-  it('shows each player their own role', () => {
-    const s = started(6);
-    assert.equal(playerView(s, 'p1').me.role, 'mafia');
-    assert.equal(playerView(s, 'p1').me.team, 'mafia');
-    assert.equal(playerView(s, 'p4').me.role, 'honest');
+describe('views: narrator', () => {
+  it('shows the composition and setup errors in the lobby', () => {
+    let s = lobby(6);
+    s = act(s, { type: 'game:configure', actor: NARRATOR, wolfCount: 3 });
+    const { derived } = narratorView(s);
+    assert.equal(derived.setupError, 'TOO_MANY_WOLVES');
+    assert.equal(derived.composition.wolfTotal, 3);
+    assert.equal(derived.recommendedWolfTotal, 2);
   });
 
-  it('lets mafiosi recognise each other from dawn on', () => {
-    const s = started(7);
-    assert.deepEqual(playerView(s, 'p1').me.partnerIds, ['p2']);
-    assert.deepEqual(playerView(s, 'p2').me.partnerIds, ['p1']);
-    assert.equal(playerView(s, 'p3').me.partnerIds, undefined);
+  it('shows the night step, its actors and a preview of the outcome', () => {
+    let s = firstNight(table());
+    s = nightAct(s, 'p5', { targetId: 'p1' });
+    const { derived } = narratorView(s);
+    assert.equal(derived.night.step, 'protector');
+    assert.deepEqual(derived.night.actorIds, ['p6']);
+    assert.deepEqual(derived.night.preview.deaths, []);
   });
 
-  it('shows the player their own vote and night request', () => {
-    let s = act(daytime(6), { type: 'night:request', actor: as('p4'), wanted: true });
-    s = act(s, { type: 'day:accuse', actor: as('p3'), targetId: 'p1' });
-    s = act(s, { type: 'day:openVote', actor: NARRATOR, accusationId: s.day.accusations[0].id });
-    s = act(s, { type: 'day:vote', actor: as('p4'), guilty: true });
-    assert.equal(playerView(s, 'p4').me.vote, true);
-    assert.equal(playerView(s, 'p4').me.nightRequested, true);
-    assert.equal(playerView(s, 'p5').me.vote, null);
-  });
-
-  it('shows the player their own night ballot', () => {
-    let s = goToNight(daytime(6));
-    s = act(s, { type: 'night:submit', actor: as('p1'), targetId: 'p4' });
-    assert.equal(playerView(s, 'p1').me.ballotSubmitted, true);
-    assert.equal(playerView(s, 'p1').me.ballotTargetId, 'p4');
-    assert.equal(playerView(s, 'p2').me.ballotSubmitted, false);
-  });
-
-  it('hides partners\' night picks in the original mode but shows them in the classic variant (V2)', () => {
-    let original = goToNight(daytime(6));
-    original = act(original, { type: 'night:submit', actor: as('p2'), targetId: 'p5' });
-    assert.equal(playerView(original, 'p1').me.partnerPicks, undefined);
-
-    let classic = goToNight(daytime(6, { mode: 'classic' }));
-    classic = act(classic, { type: 'night:submit', actor: as('p2'), targetId: 'p5' });
-    assert.deepEqual(playerView(classic, 'p1').me.partnerPicks, { p2: 'p5' });
-  });
-
-  it('gives the seer their results and the doctor their last protection', () => {
-    let s = goToNight(daytime(6, { mode: 'classic' }));
-    s = act(s, { type: 'night:ability', actor: as('p3'), targetId: 'p2' });
-    s = act(s, { type: 'night:ability', actor: as('p4'), targetId: 'p6' });
-    assert.deepEqual(playerView(s, 'p3').me.seerResults, [{ round: 1, targetId: 'p2', team: 'mafia' }]);
-    assert.equal(playerView(s, 'p4').me.abilityTargetId, 'p6');
-    s = endNight(s);
-    assert.equal(playerView(s, 'p4').me.doctorLastTargetId, 'p6');
-  });
-
-  it('returns null for unknown players', () => {
-    assert.equal(playerView(started(6), 'ghost'), null);
-  });
-});
-
-describe('narratorView', () => {
-  it('includes every role, the log and helper values for the controls', () => {
-    const s = started(8);
-    const view = narratorView(s);
-    assert.equal(view.players.filter((p) => p.role === 'mafia').length, 3);
-    assert.ok(view.log.length > 0);
-    assert.equal(view.derived.recommendedMafiaCount, 3);
-    assert.equal(view.derived.maxMafiaCount, 3);
-  });
-
-  it('explains why the game cannot start yet', () => {
-    assert.equal(narratorView(lobby(4)).derived.setupError, 'NOT_ENOUGH_PLAYERS');
-    assert.equal(narratorView(lobby(6)).derived.setupError, null);
-  });
-
-  it('shows ballots live and previews the night outcome', () => {
-    let s = act(daytime(6), { type: 'day:accuse', actor: as('p3'), targetId: 'p1' });
-    s = act(s, { type: 'day:openVote', actor: NARRATOR, accusationId: s.day.accusations[0].id });
-    s = act(s, { type: 'day:vote', actor: as('p2'), guilty: false });
-    assert.deepEqual(narratorView(s).day.vote.ballots, { p2: false });
-    assert.equal(narratorView(s).derived.liveVote.notGuiltyCount, 1);
-
-    const night = mafiaPick(goToNight(daytime(6)), 'p4');
-    assert.equal(narratorView(night).derived.nightPreview.victimId, 'p4');
-  });
-
-  it('does not share references with the state', () => {
-    const s = started(6);
-    const view = narratorView(s);
-    view.players[0].role = 'honest';
-    assert.equal(s.players[0].role, 'mafia');
+  it('shows the weighted live vote', () => {
+    let s = advance(playNight(firstNight(table()), { seer: 'p1', protector: 'p12', wolves: 'p12' }), 'day');
+    s = act(s, { type: 'day:accuse', actor: as('p5'), targetId: 'p1' });
+    s = act(s, { type: 'day:openVote', actor: NARRATOR });
+    s = act(s, { type: 'day:vote', actor: as('p8'), targetId: 'p1' });
+    assert.deepEqual(narratorView(s).derived.liveVote.weighted, { p1: 2 });
   });
 });
