@@ -14,19 +14,17 @@ import {
   started,
   voteOut,
 } from '../helpers.js';
-import { secretPaths } from '../leaks.js';
+import { leakedPaths } from '../leaks.js';
 
 /** Asserts that no view leaks hidden information, for the room and every player. */
 function assertNoLeaks(state, label) {
   const ended = state.phase === 'ended';
-  const allowedPublic = (path) => ended && /^players\.\d+\.role$/.test(path);
-
-  const leaks = secretPaths(publicView(state)).filter((path) => !allowedPublic(path));
+  const leaks = leakedPaths(publicView(state), { ended });
   assert.deepEqual(leaks, [], `${label}: public view leaks ${leaks.join(', ')}`);
 
   for (const p of state.players) {
     const view = playerView(state, p.id);
-    const outside = secretPaths(view).filter((path) => !path.startsWith('me.') && !allowedPublic(path));
+    const outside = leakedPaths(view, { ended });
     assert.deepEqual(outside, [], `${label}: view of ${p.id} leaks ${outside.join(', ')}`);
 
     if (p.role !== 'mafia') {
