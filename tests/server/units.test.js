@@ -107,12 +107,13 @@ describe('payload validation (ADR-007)', () => {
     assert.equal(check({ guilty: 'yes' }, SCHEMAS['day:vote']).ok, false);
     assert.equal(check('hello', SCHEMAS['room:join']).ok, false);
     assert.equal(check([1, 2], SCHEMAS['game:start']).ok, false);
-    assert.equal(check(null, SCHEMAS['game:start']).ok, false);
     assert.equal(check({ targetId: 'p1' }, SCHEMAS['day:accuse']).ok, false);
   });
 
-  it('accepts empty payloads for events without fields', () => {
+  it('accepts empty payloads for events without fields, including null', () => {
     assert.deepEqual(check(undefined, SCHEMAS['game:start']), { ok: true, value: {} });
+    assert.deepEqual(check(null, SCHEMAS['game:start']), { ok: true, value: {} });
+    assert.equal(check(null, SCHEMAS['day:vote']).ok, false);
   });
 
   it('does not read inherited properties', () => {

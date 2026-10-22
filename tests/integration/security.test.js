@@ -57,6 +57,11 @@ describe('input validation and authorisation (ADR-007)', () => {
     assert.deepEqual(state.day.nightRequests, [room.players[0].playerId]);
   });
 
+  it('accepts events without fields sent with an explicit undefined (arrives as null)', async () => {
+    const room = await roomWithPlayers(t, 6);
+    assert.deepEqual(await room.narrator.request('game:start', null), { ok: true });
+  });
+
   it('answers game rule errors with their code', async () => {
     const room = await roomWithPlayers(t, 5);
     assert.deepEqual(await room.narrator.request('game:start'), { ok: false, error: 'NOT_ENOUGH_PLAYERS' });

@@ -45,7 +45,8 @@ const shortId = v.pattern(/^[av][0-9]{1,9}$/); // accusation ids (a1…) from th
 
 /** Validates a payload against `{ key: validator }`. Returns { ok, value } with only those keys. */
 export function check(payload, schema) {
-  const input = payload === undefined ? {} : payload;
+  // `emit(event, undefined)` arrives as null (JSON has no undefined): treat both as "no fields".
+  const input = payload === undefined || payload === null ? {} : payload;
   if (input === null || typeof input !== 'object' || Array.isArray(input)) return bad;
   const value = {};
   for (const [key, validator] of Object.entries(schema)) {
