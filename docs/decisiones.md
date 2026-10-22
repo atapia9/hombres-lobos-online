@@ -1,9 +1,23 @@
 # Registro de decisiones técnicas (ADR)
 
-> **Estado:** propuesta inicial, pendiente de confirmación. No se escribirá código hasta que la apruebes.
+> **Estado:** aceptada el 21 de octubre de 2026. Todas las propuestas se aprobaron sin cambios.
 > **Fecha:** 21 de octubre de 2026
 >
 > _Este documento fue elaborado con asistencia de Claude (Anthropic) y está pendiente de revisión por [nombre]._
+
+### Resolución
+
+| Pregunta | Resolución |
+|---|---|
+| R5 | Un mafioso no puede marcar "Honesto". Al amanecer se anuncia a todos cuántas papeletas de mafia hubo. |
+| R9 | La "Nueva partida con los mismos jugadores", con puntuación acumulada, entra en la v0.1. |
+| R11 | Se usan las frases de cierre propuestas. |
+| R12 | Durante la partida, "Retirar jugador" cuenta como una eliminación. |
+| R13 | La prueba se hace con 3 pestañas reales y 3 jugadores simulados. |
+| P1 | El repositorio se hará público en la fase de despliegue. |
+| P2 | Licencia MIT. `docs/reglas.md` será un resumen propio con crédito. |
+| P3 | El servidor se alojará en Render (plan Free). |
+| P4 | **Pendiente:** falta el nombre para la nota de autoría. |
 
 ## Cómo leer este documento
 
