@@ -5,7 +5,7 @@ import { SERVER_URL } from '../config.js';
 import { resolveServerUrl } from './server-url.js';
 import { load, remove, save } from './storage.js';
 
-const SERVER_KEY = 'mafia:server';
+const SERVER_KEY = 'lobos:server';
 
 /** Server URL for this page, remembering a ?server= parameter for next visits. */
 export function currentServer() {

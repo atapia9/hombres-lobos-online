@@ -244,8 +244,8 @@ label { font-weight: 600; display: block; margin-bottom: 6px; }
   border: 1px solid var(--border);
 }
 
-.badge-mafia { color: var(--accent-strong); border-color: var(--accent); }
-.badge-honest { color: var(--ok); border-color: var(--ok); }
+.badge-wolf { color: var(--accent-strong); border-color: var(--accent); }
+.badge-village { color: var(--ok); border-color: var(--ok); }
 .badge-special { color: var(--info); border-color: var(--info); }
 .badge-variant { color: var(--warn); border-color: var(--warn); }
 

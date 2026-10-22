@@ -45,8 +45,8 @@
 }
 
 .role-title { font-size: 2rem; font-weight: 900; margin: 0 0 4px; }
-.role-mafia .role-title { color: var(--accent-strong); }
-.role-honest .role-title { color: var(--ok); }
+.role-wolves .role-title { color: var(--accent-strong); }
+.role-village .role-title { color: var(--ok); }
 .role-seer .role-title, .role-doctor .role-title { color: var(--info); }
 
 .secret-status { font-size: 1.05rem; margin: 8px 0 12px; }

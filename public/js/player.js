@@ -2,15 +2,15 @@
 // public state and act in each phase. Secrets live only behind covered cards (ADR-010).
 
 import { connect, currentServer, resetServer } from './net.js';
-import { $, announce, h, render, toast, whenIdle } from './dom.js';
-import { CLASSIC_NOTE, MODE_LABELS, PHASE_LABELS, ROLE_LABELS, WINNER_LABELS, errorMessage } from './texts.js';
-import { describeLastNight, describeStatus, formatCountdown, namer } from './format.js';
-import { accuseOptions, endMessage, nightChoices, parseRoomCode, roleCard, voteView } from './player-logic.js';
+import { $, announce, confirmDialog, h, render, toast, whenIdle } from './dom.js';
+import { PHASE_LABELS, ROLE_LABELS, WINNER_LABELS, errorMessage, teamOfRole } from './texts.js';
+import { describeDawn, describeStatus, formatCountdown, namer } from './format.js';
+import { accuseOptions, endMessage, hunterPanel, nightPanel, parseRoomCode, roleCard, voteView } from './player-logic.js';
 import { mountRules } from './rules-ui.js';
 import { load, loadTab, removeTab, save, saveTab } from './storage.js';
 
-const SESSIONS_KEY = 'mafia:player:sessions'; // localStorage: { [code:playerId]: session }, survives closing the tab
-const TAB_KEY = 'mafia:player:tab'; // sessionStorage: this tab's session, so several tabs can play
+const SESSIONS_KEY = 'lobos:player:sessions'; // localStorage: { [code:playerId]: session }, survives closing the tab
+const TAB_KEY = 'lobos:player:tab'; // sessionStorage: this tab's session, so several tabs can play
 // Hidden cards cover themselves after this long without interaction (ADR-010).
 const REVEAL_MS = { role: 10_000, night: 20_000 };
 
@@ -35,6 +35,7 @@ const ui = {
   // Unsent selections survive re-renders caused by other players' actions.
   nightChoice: undefined,
   accuseTarget: '',
+  voteTarget: undefined,
   resumeOffers: [], // sessions saved by earlier tabs: offered, never resumed silently
 };
 
@@ -243,10 +244,12 @@ function renderNow() {
   render(app,
     statusStrip(s),
     s.phase === 'lobby' ? lobbyCard(s) : null,
-    ['dawn', 'day', 'night'].includes(s.phase) ? roleSection(s) : null,
-    s.phase === 'dawn' ? dawnCard() : null,
+    hunterCard(s),
+    ['start', 'night', 'dawn', 'day'].includes(s.phase) ? roleSection(s) : null,
+    s.phase === 'start' ? startCard() : null,
+    s.phase === 'dawn' ? dawnCard(s, nameOf) : null,
     s.phase === 'day' ? dayCard(s, nameOf) : null,
-    s.phase === 'night' ? nightCard(s) : null,
+    s.phase === 'night' ? nightCard(s, nameOf) : null,
     s.phase === 'ended' ? endedCard(s) : null,
     playersCard(s),
   );
@@ -401,8 +404,13 @@ function statusStrip(s) {
         s.round > 0 ? ` · Ronda ${s.round}` : '',
       ),
     ),
-    h('span', { class: s.mode === 'classic' ? 'badge badge-variant' : 'badge', text: MODE_LABELS[s.mode] }),
+    s.phase !== 'lobby' ? h('span', { class: 'pill', text: `${s.players.filter((p) => p.alive).length} vivos` }) : null,
   );
+}
+
+function compositionLine(s) {
+  const roles = Object.entries(s.setup.counts).filter(([, n]) => n > 0).map(([role, n]) => `${ROLE_LABELS[role]}${n > 1 ? ` ×${n}` : ''}`);
+  return `En juego: ${roles.join(', ')}.`;
 }
 
 function lobbyCard(s) {
@@ -410,10 +418,7 @@ function lobbyCard(s) {
   return h('section', { class: 'card card-highlight' },
     h('h1', { text: 'Ya estás dentro' }),
     h('p', { text: `Espera a que el narrador inicie la partida. Hay ${count} ${count === 1 ? 'jugador' : 'jugadores'}${count < s.minPlayers ? `; se necesitan al menos ${s.minPlayers}` : ''}.` }),
-    s.mode === 'classic' ? h('p', { class: 'muted small', text: `Modo clásico con roles. ${CLASSIC_NOTE}` }) : null,
-    count >= s.minPlayers
-      ? h('p', { class: 'muted small', text: `Si empieza ahora, habrá ${s.mafiaCount} ${s.mafiaCount === 1 ? 'mafioso' : 'mafiosos'} entre ${count} jugadores.` })
-      : null,
+    count >= s.minPlayers ? h('p', { class: 'muted small', text: compositionLine(s) }) : null,
     h('button', {
       class: 'btn btn-ghost',
       text: 'Salir de la sala',
@@ -439,7 +444,7 @@ function roleSection(s) {
       h('button', { class: 'btn btn-primary btn-big btn-block', dataset: { key: 'show-role' }, 'aria-controls': 'role-heading', text: 'Mostrar mi rol', onclick: () => reveal('role') }),
     );
   }
-  return h('section', { class: `card secret is-revealed role-${card.role}`, 'aria-labelledby': 'role-heading', ...revealedCardEvents },
+  return h('section', { class: `card secret is-revealed role-${teamOfRole(card.role)}`, 'aria-labelledby': 'role-heading', ...revealedCardEvents },
     h('p', { class: 'secret-warning', role: 'alert', text: 'Tu rol está visible. Cubre la pantalla y no lo enseñes.' }),
     h('h2', { id: 'role-heading', class: 'visually-hidden', text: 'Tu rol' }),
     h('p', { class: 'role-title', text: card.title }),
@@ -450,63 +455,111 @@ function roleSection(s) {
   );
 }
 
-function dawnCard() {
+function startCard() {
   return h('section', { class: 'card card-highlight' },
     h('h1', { text: 'Mira tu rol en privado' }),
-    h('p', { text: 'Si eres de la Mafia, verás quiénes son tus compañeros.' }),
-    h('p', { class: 'muted', text: 'El narrador empezará el día en cuanto todos lo hayan visto.' }),
+    h('p', { text: 'Si eres lobo, verás quiénes son tus compañeros.' }),
+    h('p', { class: 'muted', text: 'El narrador empezará la primera noche en cuanto todos lo hayan visto.' }),
+  );
+}
+
+function dawnCard(s, nameOf) {
+  return h('section', { class: 'card card-highlight', 'aria-labelledby': 'dawn-title' },
+    h('h1', { id: 'dawn-title', text: 'Amanecer' }),
+    h('p', { class: 'announcement', text: describeDawn(s.lastNight, nameOf) }),
+    s.pendingShot && !s.me.mustShoot ? h('p', { class: 'notice notice-warn', text: `${nameOf(s.pendingShot.hunterId)} era el Cazador y va a disparar.` }) : null,
+    s.me.alive ? null : h('p', { class: 'notice notice-warn', text: 'Estás fuera de la partida. No reveles tu rol.' }),
+  );
+}
+
+function hunterCard(s) {
+  const panel = hunterPanel(s);
+  if (!panel) return null;
+  const select = h('select', { id: 'hunter-target', dataset: { key: 'hunter-target' } },
+    h('option', { value: '', text: 'Elige a quién disparar' }),
+    panel.options.map((o) => h('option', { value: o.value, text: o.label })));
+  return h('section', { class: 'card card-highlight', role: 'alert', 'aria-labelledby': 'hunter-title' },
+    h('h1', { id: 'hunter-title', text: 'Tu último disparo' }),
+    h('p', { text: panel.instruction }),
+    h('label', { for: 'hunter-target', class: 'visually-hidden', text: 'Jugador al que disparas' }),
+    select,
+    h('button', {
+      class: 'btn btn-danger btn-big btn-block',
+      style: 'margin-top: 12px',
+      dataset: { key: 'hunter-shoot' },
+      text: 'Disparar',
+      onclick: async () => {
+        if (!select.value) return toast('Elige primero a quién disparar.', { kind: 'error' });
+        const name = panel.options.find((o) => o.value === select.value)?.label;
+        if (!(await confirmDialog({ title: `¿Disparar a ${name}?`, message: 'No se puede deshacer.', confirmLabel: 'Disparar', danger: true }))) return;
+        send('hunter:shoot', { targetId: select.value });
+      },
+    }),
   );
 }
 
 function dayCard(s, nameOf) {
-  const lastNight = s.lastNight && s.lastNight.round === s.round - 1 ? describeLastNight(s.lastNight, nameOf, s.mode) : null;
   const vote = voteView(s);
   return h('section', { class: 'card card-highlight', 'aria-labelledby': 'day-title' },
     h('h1', { id: 'day-title', text: 'Día' }),
-    lastNight ? h('p', { class: 'announcement', text: lastNight }) : null,
+    s.lastNight && s.lastNight.round === s.round ? h('p', { class: 'muted', text: describeDawn(s.lastNight, nameOf) }) : null,
     timerLine(s),
     s.me.alive
-      ? h('p', { class: 'muted', text: 'Discutan en voz alta. Cualquiera puede acusar y pedir votación.' })
+      ? h('p', { class: 'muted', text: 'Discutan en voz alta. Acusa a quien sospeches; el narrador abrirá la votación entre los acusados.' })
       : h('p', { class: 'notice notice-warn', text: 'Estás fuera de la partida. No reveles tu rol: ya no puedes ayudar a nadie.' }),
     vote ? voteBlock(vote) : null,
-    s.me.alive ? accuseBlock(s, nameOf) : null,
-    s.me.alive && s.nightRequests ? nightRequestBlock(s, nameOf) : null,
+    !vote && s.voteHeld ? h('p', { class: 'notice notice-info', text: 'La votación de hoy ya terminó. Pronto caerá la noche.' }) : null,
+    s.me.alive && !vote && !s.voteHeld ? accuseBlock(s, nameOf) : null,
   );
 }
 
 function voteBlock(vote) {
   if (!vote.open) {
     return h('div', { class: 'section-gap', role: 'region', 'aria-labelledby': 'vote-title' },
-      h('h2', { id: 'vote-title', text: `Resultado: ${vote.accused}` }),
+      h('h2', { id: 'vote-title', text: 'Resultado de la votación' }),
       h('p', { class: 'announcement', text: vote.result.text }),
-      h('p', { class: 'small' }, 'Votaron «culpable»: ', vote.result.guiltyVoters.length ? vote.result.guiltyVoters.join(', ') : 'nadie', '.'),
+      vote.result.voters
+        ? h('ul', { class: 'list' }, vote.result.voters.map((row) => h('li', { class: 'list-item small' },
+          h('span', { class: 'name', text: row.name }),
+          h('span', { text: row.voters.length ? `votos de: ${row.voters.join(', ')}` : 'sin votos' }),
+        )))
+        : null,
     );
   }
+  const mine = vote.myBallot;
+  const selected = ui.voteTarget !== undefined ? ui.voteTarget : mine?.targetId;
   return h('div', { class: 'section-gap', role: 'region', 'aria-labelledby': 'vote-title' },
-    h('h2', { id: 'vote-title', text: `Votación: ¿${vote.accused} es culpable?` }),
-    h('p', { class: 'muted small', text: `Acusa: ${vote.accuser}.` }),
-    vote.isAccused ? h('p', { class: 'notice notice-warn', text: 'Te acusaron. Defiéndete en voz alta: tú no votas.' }) : null,
-    vote.canVote ? h('div', { class: 'vote-buttons' },
-      h('button', {
-        class: 'btn btn-big btn-guilty',
-        dataset: { key: 'vote-guilty' },
-        'aria-pressed': String(vote.myVote === true),
-        'aria-label': `Votar culpable contra ${vote.accused}`,
-        text: 'Culpable',
-        onclick: () => send('day:vote', { guilty: true }),
-      }),
-      h('button', {
-        class: 'btn btn-big btn-innocent',
-        dataset: { key: 'vote-innocent' },
-        'aria-pressed': String(vote.myVote === false),
-        'aria-label': `Votar no culpable a favor de ${vote.accused}`,
-        text: 'No culpable',
-        onclick: () => send('day:vote', { guilty: false }),
-      }),
+    h('h2', { id: 'vote-title', text: 'Votación: ¿quién sale de la aldea?' }),
+    vote.candidates.some((c) => c.isMe) ? h('p', { class: 'notice notice-warn', text: 'Te acusaron. Defiéndete en voz alta: no puedes votar contra ti.' }) : null,
+    vote.canVote ? h('fieldset', { class: 'options' },
+      h('legend', { text: 'Marca a un acusado o abstente' }),
+      [...vote.candidates.filter((c) => !c.isMe).map((c) => ({ value: c.id, label: c.name })), { value: null, label: 'Me abstengo' }]
+        .map((option) => h('label', { class: 'option' },
+          h('input', {
+            type: 'radio',
+            name: 'vote-choice',
+            value: option.value ?? '',
+            checked: selected !== undefined && selected === option.value,
+            onchange: () => { ui.voteTarget = option.value; },
+          }),
+          h('span', { text: option.label }),
+        )),
     ) : null,
-    vote.canVote && vote.myVote !== null
-      ? h('button', { class: 'btn btn-ghost btn-small', text: 'Retirar mi voto', onclick: () => send('day:vote', { guilty: null }) })
-      : null,
+    vote.canVote ? h('button', {
+      class: 'btn btn-primary btn-big btn-block',
+      dataset: { key: 'vote-send' },
+      'aria-label': 'Confirmar mi voto',
+      text: mine ? 'Cambiar mi voto' : 'Confirmar mi voto',
+      onclick: async () => {
+        if (ui.voteTarget === undefined) return toast('Elige una opción.', { kind: 'error' });
+        const answer = await send('day:vote', { targetId: ui.voteTarget });
+        if (answer.ok) {
+          ui.voteTarget = undefined;
+          toast('Voto registrado.', { kind: 'ok' });
+        }
+      },
+    }) : null,
+    mine ? h('p', { class: 'small', text: mine.targetId === null ? 'Tu voto: te abstienes.' : `Tu voto: contra ${vote.candidates.find((c) => c.id === mine.targetId)?.name ?? '¿?'}.` }) : null,
     h('p', { class: 'small', style: 'margin-top: 8px', text: vote.progress }),
   );
 }
@@ -548,105 +601,119 @@ function accuseBlock(s, nameOf) {
   );
 }
 
-function nightRequestBlock(s, nameOf) {
-  const { count, needed, playerIds } = s.nightRequests;
-  const requested = s.me.nightRequested;
-  return h('div', { class: 'section-gap' },
-    h('h2', { text: 'La noche' }),
-    h('p', { class: 'small', text: `Piden la noche: ${count} de ${needed} necesarios${playerIds.length ? ` (${playerIds.map(nameOf).join(', ')})` : ''}.` }),
-    h('button', {
-      class: requested ? 'btn' : 'btn btn-primary',
-      dataset: { key: 'night-request' },
-      'aria-pressed': String(requested),
-      text: requested ? 'Ya no pido la noche' : 'Pedir la noche',
-      onclick: () => send('night:request', { wanted: !requested }),
-    }),
-  );
-}
-
-function nightCard(s) {
-  const choices = nightChoices(s);
+function nightCard(s, nameOf) {
+  const panel = nightPanel(s);
   const header = h('h1', { id: 'night-title', text: 'Noche' });
-  if (choices.kind === 'none') {
-    return h('section', { class: 'card card-night night', 'aria-labelledby': 'night-title' },
-      header,
-      h('p', { text: choices.instruction }),
-      nightProgressLine(s),
-    );
+  if (panel.kind === 'dead') {
+    return h('section', { class: 'card card-night night', 'aria-labelledby': 'night-title' }, header, h('p', { text: panel.instruction }));
   }
 
-  const status = choices.submitted ? 'Papeleta entregada ✓' : 'Papeleta pendiente';
+  // Everyone alive sees the same covered card, so nobody can tell who has a turn.
   if (ui.reveal !== 'night') {
     return h('section', { class: 'card card-night night', 'aria-labelledby': 'night-title' },
       header,
       h('div', { class: 'secret' },
-        h('p', { class: 'secret-status', text: status }),
-        h('p', { class: 'muted small', text: 'Todos entregan una papeleta en secreto. Ábrela cuando nadie mire tu pantalla.' }),
-        h('button', { class: 'btn btn-primary btn-big btn-block', dataset: { key: 'open-ballot' }, text: 'Abrir mi papeleta', onclick: () => reveal('night') }),
+        h('p', { class: 'muted small', text: 'Ábrelo cuando nadie mire tu pantalla: ahí verás si te toca actuar.' }),
+        h('button', { class: 'btn btn-primary btn-big btn-block', dataset: { key: 'open-night' }, text: 'Abrir mi panel de la noche', onclick: () => reveal('night') }),
       ),
-      nightProgressLine(s),
     );
   }
 
-  const seerResult = choices.kind === 'seer' ? (s.me.seerResults ?? []).find((r) => r.round === s.round) : null;
-  const nameOf = namer(s.players);
-  const selected = ui.nightChoice !== undefined ? ui.nightChoice : choices.current;
+  return h('section', { class: 'card card-night night', 'aria-labelledby': 'night-title' },
+    header,
+    h('div', { class: 'secret is-revealed', ...revealedCardEvents },
+      h('p', { class: 'secret-warning', role: 'alert', text: 'Tu panel está visible. Cubre la pantalla.' }),
+      panel.title ? h('h2', { text: panel.title }) : null,
+      h('p', { text: panel.instruction }),
+      nightBody(s, panel, nameOf),
+      h('button', { class: 'btn btn-block', style: 'margin-top: 8px', dataset: { key: 'hide-night' }, text: 'Ocultar', onclick: cover }),
+    ),
+  );
+}
+
+function latestSeerResult(s) {
+  return (s.me.seerResults ?? []).find((r) => r.round === s.round) ?? null;
+}
+
+function nightBody(s, panel, nameOf) {
+  if (panel.kind === 'wait') {
+    const seen = s.me.role === 'seer' ? latestSeerResult(s) : null;
+    return seen
+      ? h('p', { class: 'notice notice-info', text: `${nameOf(seen.targetId)} ${seen.isWolf ? 'ES lobo' : 'no es lobo'}.` })
+      : null;
+  }
+  if (panel.kind === 'alpha') {
+    return h('div', { class: 'row' },
+      h('button', { class: 'btn btn-danger btn-big', dataset: { key: 'alpha-convert' }, 'aria-label': `Convertir a ${panel.targetName} en lobo`, text: 'Convertir en lobo', onclick: () => send('night:act', { convert: true }) }),
+      h('button', { class: 'btn btn-big', dataset: { key: 'alpha-kill' }, 'aria-label': `Dejar que ${panel.targetName} muera`, text: 'Que muera', onclick: () => send('night:act', { convert: false }) }),
+    );
+  }
+  if (panel.kind === 'witch') return witchForm(panel);
+  return choiceForm(panel);
+}
+
+function choiceForm(panel) {
+  const selected = ui.nightChoice !== undefined ? ui.nightChoice : panel.current ?? undefined;
   const form = h('form', {
     onchange: (event) => {
-      if (event.target.name === 'night-choice') ui.nightChoice = event.target.value === '' ? null : event.target.value;
+      if (event.target.name === 'night-choice') ui.nightChoice = event.target.value;
     },
     onsubmit: async (event) => {
       event.preventDefault();
       const picked = form.querySelector('input[name="night-choice"]:checked');
-      if (!picked) return toast('Elige una opción.', { kind: 'error' });
-      const value = picked.value === '' ? null : picked.value;
-      const answer = choices.kind === 'ballot'
-        ? await send('night:submit', { targetId: value })
-        : await send('night:ability', { targetId: value });
+      if (!picked) return toast('Elige a alguien.', { kind: 'error' });
+      const answer = await send('night:act', { targetId: picked.value });
       if (!answer.ok) return;
-      if (choices.kind === 'seer') {
-        keepRevealed(); // keep the result on screen for a moment
-      } else {
-        toast('Papeleta entregada.', { kind: 'ok' });
-        cover();
-      }
+      ui.nightChoice = undefined;
+      keepRevealed();
+      if (panel.kind === 'protector') toast('Protección registrada.', { kind: 'ok' });
+      if (panel.kind === 'wolves') toast('Elección enviada a la manada.', { kind: 'ok' });
     },
   },
-  h('fieldset', { class: 'options', disabled: choices.locked },
-    h('legend', { text: 'Tu papeleta' }),
-    choices.options.map((option) => h('label', { class: 'option' },
+  panel.kind === 'wolves' && panel.partnerPicks.length
+    ? h('ul', { class: 'small' }, panel.partnerPicks.map((p) => h('li', { text: `${p.name}: ${p.target ? `elige a ${p.target}` : 'todavía no elige'}` })))
+    : null,
+  panel.disagree ? h('p', { class: 'notice notice-warn', text: 'La manada no coincide. Pónganse de acuerdo: pueden cambiar su elección.' }) : null,
+  h('fieldset', { class: 'options' },
+    h('legend', { text: panel.action }),
+    panel.options.map((option) => h('label', { class: 'option' },
       h('input', {
         type: 'radio',
         name: 'night-choice',
-        value: option.value ?? '',
-        checked: selected !== undefined && selected === option.value,
+        value: option.value,
+        checked: selected === option.value,
         disabled: option.disabled,
       }),
       h('span', { text: option.label }),
       option.note ? h('span', { class: 'note', text: option.note }) : null,
     )),
   ),
-  choices.locked ? null : h('button', { type: 'submit', class: 'btn btn-primary btn-big btn-block', text: choices.submitted && choices.kind !== 'seer' ? 'Cambiar papeleta' : choices.action }),
+  h('button', { type: 'submit', class: 'btn btn-primary btn-big btn-block', dataset: { key: 'night-send' }, text: panel.kind === 'wolves' && panel.current ? 'Cambiar elección' : panel.action }),
   );
-
-  return h('section', { class: 'card card-night night', 'aria-labelledby': 'night-title' },
-    header,
-    h('div', { class: 'secret is-revealed', ...revealedCardEvents },
-      h('p', { class: 'secret-warning', role: 'alert', text: 'Tu papeleta está visible. Cubre la pantalla.' }),
-      h('p', { text: choices.instruction }),
-      choices.partnerPicks?.length
-        ? h('ul', { class: 'small' }, choices.partnerPicks.map((p) => h('li', { text: `${p.name}: ${p.target ? `elige a ${p.target}` : 'todavía no elige'}` })))
-        : null,
-      seerResult ? h('p', { class: 'notice notice-info', text: `${nameOf(seerResult.targetId)} es ${seerResult.team === 'mafia' ? 'de la Mafia' : 'Honesto'}.` }) : null,
-      form,
-      h('button', { class: 'btn btn-block', style: 'margin-top: 8px', dataset: { key: 'hide-ballot' }, text: 'Ocultar', onclick: cover }),
-    ),
-    nightProgressLine(s),
-  );
+  return form;
 }
 
-function nightProgressLine(s) {
-  return s.night ? h('p', { class: 'muted small', style: 'margin-top: 12px', text: `Papeletas entregadas: ${s.night.submitted} de ${s.night.expected}.` }) : null;
+function witchForm(panel) {
+  const heal = panel.canHeal ? h('input', { type: 'checkbox', id: 'witch-heal', dataset: { key: 'witch-heal' } }) : null;
+  const poison = panel.canPoison
+    ? h('select', { id: 'witch-poison', dataset: { key: 'witch-poison' } },
+      h('option', { value: '', text: 'No usar la poción de muerte' }),
+      panel.poisonOptions.map((o) => h('option', { value: o.value, text: o.label })))
+    : null;
+  return h('form', {
+    onsubmit: async (event) => {
+      event.preventDefault();
+      const answer = await send('night:act', { heal: Boolean(heal?.checked), poisonTargetId: poison?.value || null });
+      if (answer.ok) {
+        toast('Listo.', { kind: 'ok' });
+        cover();
+      }
+    },
+  },
+  heal ? h('label', { class: 'switch' }, heal, `Usar la poción de vida para salvar a ${panel.victimName}`) : h('p', { class: 'muted small', text: 'No puedes usar la poción de vida esta noche.' }),
+  poison ? h('div', { class: 'field' }, h('label', { for: 'witch-poison', text: 'Poción de muerte' }), poison) : h('p', { class: 'muted small', text: 'Ya usaste la poción de muerte.' }),
+  h('button', { type: 'submit', class: 'btn btn-primary btn-big btn-block', dataset: { key: 'witch-send' }, text: 'Terminar mi turno' }),
+  );
 }
 
 function timerLine(s) {
@@ -664,21 +731,10 @@ function tickTimer() {
 }
 
 function endedCard(s) {
-  const scores = s.scores;
   return h('section', { class: 'card card-highlight', 'aria-labelledby': 'end-title' },
     h('h1', { id: 'end-title', class: 'result-big', text: WINNER_LABELS[s.winner] }),
     h('p', { class: 'announcement', text: endMessage(s) }),
-    h('p', { class: 'muted', text: `Tu rol era: ${ROLE_LABELS[s.me.role]}. Ahora todos los roles son visibles.` }),
-    scores ? h('table', { class: 'score-table' },
-      h('caption', { class: 'visually-hidden', text: 'Puntuación' }),
-      h('thead', {}, h('tr', {}, h('th', { scope: 'col', text: 'Jugador' }), h('th', { scope: 'col', text: s.gameNumber > 1 ? 'Puntos (total)' : 'Puntos' }))),
-      h('tbody', {}, [...s.players]
-        .sort((a, b) => (scores[b.id] ?? 0) - (scores[a.id] ?? 0))
-        .map((p) => h('tr', {},
-          h('td', { text: p.id === s.me.id ? `${p.name} (tú)` : p.name }),
-          h('td', { text: s.gameNumber > 1 ? `${scores[p.id] ?? 0} (${s.scoreboard?.[p.id] ?? 0})` : String(scores[p.id] ?? 0) }),
-        ))),
-    ) : null,
+    h('p', { class: 'muted', text: `Tu rol era: ${ROLE_LABELS[s.me.role]}${s.me.originalRole ? ` (antes ${ROLE_LABELS[s.me.originalRole]})` : ''}. Ahora todos los roles son visibles.` }),
     h('p', { class: 'muted small', style: 'margin-top: 12px', text: 'Si el narrador empieza otra partida con los mismos jugadores, volverás a la sala de espera.' }),
   );
 }
@@ -692,7 +748,7 @@ function playersCard(s) {
       h('span', { class: 'row' },
         h('span', { class: `dot ${p.connected ? 'dot-ok' : 'dot-off'}`, role: 'img', 'aria-label': p.connected ? 'Conectado' : 'Desconectado' }),
         h('span', { class: 'name', text: p.id === s.me.id ? `${p.name} (tú)` : p.name }),
-        ended && p.role ? h('span', { class: `badge ${p.role === 'mafia' ? 'badge-mafia' : p.role === 'honest' ? 'badge-honest' : 'badge-special'}`, text: ROLE_LABELS[p.role] }) : null,
+        p.role ? h('span', { class: `badge ${teamOfRole(p.role) === 'wolves' ? 'badge-wolf' : p.role === 'villager' ? 'badge-village' : 'badge-special'}`, text: ROLE_LABELS[p.role] }) : null,
       ),
       s.phase === 'lobby' ? null : h('span', { class: 'muted small', text: describeStatus(p) }),
     ))),

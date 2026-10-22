@@ -6,20 +6,21 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { joinLink, normalizeServerUrl, resolveServerUrl } from '../../public/js/server-url.js';
 import {
-  describeLastNight,
+  describeDawn,
   describeLogEntry,
   describeStatus,
   formatCountdown,
   groupByRound,
   namer,
   roundTitle,
+  describeVoteResult,
 } from '../../public/js/format.js';
-import { KNOWN_ERRORS, errorMessage } from '../../public/js/texts.js';
-import { CLASSIC_RULES, RULES_CREDIT, RULES_FULL, RULES_SUMMARY } from '../../public/js/rules.js';
+import { KNOWN_ERRORS, ROLE_LABELS, errorMessage } from '../../public/js/texts.js';
+import { RULES_CREDIT, RULES_FULL, RULES_SUMMARY } from '../../public/js/rules.js';
 import { qrPath } from '../../public/js/qr.js';
 import { encode } from '../../public/vendor/uqr.mjs';
-import { applyAction } from '../../server/game/index.js';
-import { as, daytime, voteOut } from '../helpers.js';
+import { NARRATOR, act, advance, as, firstNight, nightAct, started, voteOut } from '../helpers.js';
+import { ROLE_CATALOG } from '../../server/game/index.js';
 
 const root = join(import.meta.dirname, '..', '..');
 
@@ -45,8 +46,8 @@ describe('server URL (ADR-006)', () => {
 
   it('builds the join link next to the current page, also under a GitHub Pages path', () => {
     assert.equal(
-      joinLink({ pageHref: 'https://atapia9.github.io/mafia-online/narrador.html?x=1#y', code: 'ABCDE', serverUrl: 'https://api.example', defaultServerUrl: 'https://api.example' }),
-      'https://atapia9.github.io/mafia-online/jugador.html?sala=ABCDE',
+      joinLink({ pageHref: 'https://atapia9.github.io/hombres-lobos-online/narrador.html?x=1#y', code: 'ABCDE', serverUrl: 'https://api.example', defaultServerUrl: 'https://api.example' }),
+      'https://atapia9.github.io/hombres-lobos-online/jugador.html?sala=ABCDE',
     );
     assert.equal(
       joinLink({ pageHref: 'http://localhost:3000/narrador.html', code: 'ABCDE', serverUrl: 'https://other.example', defaultServerUrl: 'http://localhost:3000' }),
@@ -54,6 +55,30 @@ describe('server URL (ADR-006)', () => {
     );
   });
 });
+
+/** A game that goes through every kind of log entry. */
+function eventfulGame() {
+  // 9 players: p1 wolf, p2 alpha, p3 seer, p4 protector, p5 hunter, p6 witch, p7..p9 villagers.
+  let s = started(9, { roles: { alpha: true, hunter: true, witch: true }, wolfCount: 1 });
+  s = act(s, { type: 'timer:set', actor: NARRATOR, seconds: 120 });
+  s = firstNight(s);
+  s = nightAct(s, 'p3', { targetId: 'p1' });
+  s = nightAct(s, 'p4', { targetId: 'p9' });
+  s = nightAct(s, 'p1', { targetId: 'p5' });
+  s = nightAct(s, 'p2', { targetId: 'p7' });
+  s = act(s, { type: 'night:wolvesRevote', actor: NARRATOR });
+  s = nightAct(s, 'p1', { targetId: 'p5' });
+  s = nightAct(s, 'p2', { targetId: 'p5' });
+  s = nightAct(s, 'p2', { convert: false });
+  s = nightAct(s, 'p6', { heal: false, poisonTargetId: 'p8' });
+  s = advance(s, 'dawn');
+  s = act(s, { type: 'hunter:shoot', actor: as('p5'), targetId: 'p9' });
+  s = advance(s, 'day');
+  s = act(s, { type: 'day:accuse', actor: as('p3'), targetId: 'p6' });
+  s = act(s, { type: 'day:dismissAccusation', actor: NARRATOR, accusationId: s.day.accusations[0].id });
+  s = voteOut(s, 'p1');
+  return s;
+}
 
 describe('formatting', () => {
   it('formats countdowns', () => {
@@ -63,25 +88,32 @@ describe('formatting', () => {
   });
 
   it('describes every log entry of a real game in Spanish', () => {
-    let s = daytime(7);
-    s = applyAction(s, { type: 'night:request', actor: as('p3'), wanted: true }).state;
-    s = voteOut(s, 'p3', 'p1');
+    const s = eventfulGame();
     const nameOf = namer(s.players);
+    const types = new Set();
     for (const entry of s.log) {
+      types.add(entry.type);
       const text = describeLogEntry(entry, nameOf);
       assert.notEqual(text, entry.type, `no description for ${entry.type}`);
       assert.doesNotMatch(text, /undefined|¿\?/, `${entry.type}: ${text}`);
     }
-    const started = s.log.find((e) => e.type === 'game_started');
-    assert.equal(describeLogEntry(started, nameOf), 'Empieza la partida (Original de Davýdov). Mafia: Jugador 1, Jugador 2.');
+    for (const type of ['seer_checked', 'player_protected', 'wolves_revote', 'alpha_chose', 'witch_acted', 'hunter_shot', 'vote_closed']) {
+      assert.ok(types.has(type), `the scripted game should log ${type}`);
+    }
+    const startedEntry = s.log.find((e) => e.type === 'game_started');
+    assert.match(describeLogEntry(startedEntry, nameOf), /Lobo: Jugador 1\. Lobo alfa: Jugador 2\. Vidente: Jugador 3/);
   });
 
-  it('describes night, seer and doctor entries', () => {
+  it('describes conversions and skipped steps', () => {
+    const nameOf = namer([{ id: 'a', name: 'Ana' }]);
+    assert.equal(describeLogEntry({ type: 'player_converted', data: { playerId: 'a', from: 'seer' } }, nameOf), 'Ana (Vidente) se convierte en lobo.');
+    assert.equal(describeLogEntry({ type: 'night_step', data: { from: 'seer', to: 'protector', skipped: true } }, nameOf), 'Turno de la Vidente: se salta (nadie actúa).');
+  });
+
+  it('describes a closed vote with the weighted totals', () => {
     const nameOf = namer([{ id: 'a', name: 'Ana' }, { id: 'b', name: 'Beto' }]);
-    assert.equal(describeLogEntry({ type: 'night_resolved', data: { victimId: 'a', mafiaBallots: 2 } }, nameOf), 'Fin de la noche: muere Ana (papeletas de mafia: 2).');
-    assert.equal(describeLogEntry({ type: 'night_resolved', data: { victimId: null, saved: true, intendedVictimId: 'b' } }, nameOf), 'Fin de la noche: el Doctor salvó a Beto.');
-    assert.equal(describeLogEntry({ type: 'seer_checked', data: { playerId: 'a', targetId: 'b', team: 'mafia' } }, nameOf), 'La Vidente (Ana) consulta a Beto: Mafia.');
-    assert.equal(describeLogEntry({ type: 'night_ballot', data: { playerId: 'b', targetId: null } }, nameOf), 'Beto entrega «Honesto».');
+    assert.equal(describeVoteResult({ eliminatedId: 'a', weighted: { a: 3, b: 3 }, tieBrokenByMayor: true }, nameOf), 'sale Ana (desempate del Alcalde). Votos: Ana 3, Beto 3.');
+    assert.equal(describeVoteResult({ eliminatedId: null, tie: true, weighted: { a: 1, b: 1 } }, nameOf), 'empate, nadie sale. Votos: Ana 1, Beto 1.');
   });
 
   it('groups the log by game and round, keeping order', () => {
@@ -93,28 +125,29 @@ describe('formatting', () => {
     assert.equal(roundTitle(3), 'Ronda 3');
   });
 
-  it('writes the dawn announcement, with the ballot count only in the original mode', () => {
-    const nameOf = namer([{ id: 'a', name: 'Ana' }]);
-    assert.equal(describeLastNight({ victimId: 'a', mafiaBallots: 2 }, nameOf, 'original'), 'Esta noche murió Ana. Hubo 2 papeletas de mafia.');
-    assert.equal(describeLastNight({ victimId: null, mafiaBallots: 1 }, nameOf, 'original'), 'Esta noche no murió nadie. Hubo 1 papeleta de mafia.');
-    assert.equal(describeLastNight({ victimId: null }, nameOf, 'classic'), 'Esta noche no murió nadie.');
+  it('writes the dawn announcement without saying how anyone died', () => {
+    const nameOf = namer([{ id: 'a', name: 'Ana' }, { id: 'b', name: 'Beto' }]);
+    assert.equal(describeDawn({ deathIds: [] }, nameOf), 'La aldea despierta: esta noche no murió nadie.');
+    assert.equal(describeDawn({ deathIds: ['a'] }, nameOf), 'La aldea despierta: esta noche murió Ana.');
+    assert.equal(describeDawn({ deathIds: ['a', 'b'] }, nameOf), 'La aldea despierta: esta noche murieron Ana y Beto.');
   });
 
-  it('describes a player status', () => {
+  it('describes a player status without the cause', () => {
     assert.equal(describeStatus({ alive: true }), 'En juego');
-    assert.equal(describeStatus({ alive: false, eliminatedRound: 2, eliminatedBy: 'vote' }), 'Fuera (ronda 2, votación)');
+    assert.equal(describeStatus({ alive: false, eliminatedRound: 2, eliminatedPhase: 'night' }), 'Fuera (ronda 2, noche)');
   });
 });
 
-describe('error messages', () => {
+describe('error messages and labels', () => {
   it('has a Spanish message for every error code the server can return', async () => {
-    const files = ['server/game/game.js', 'server/net/handlers.js', 'server/game/roles.js'];
+    const roleFiles = Object.keys(ROLE_CATALOG).map((id) => `server/game/roles/${id === 'villager' ? 'villager' : id}.js`);
+    const files = ['server/game/engine.js', 'server/game/setup.js', 'server/net/handlers.js', ...roleFiles];
     const codes = new Set();
     for (const file of files) {
       const source = await readFile(join(root, file), 'utf8');
-      for (const [, code] of source.matchAll(/(?:return|failure\()\s*'([A-Z_]{4,})'/g)) codes.add(code);
+      for (const [, code] of source.matchAll(/(?:return|failure\(|\?)\s*'([A-Z_]{4,})'/g)) codes.add(code);
     }
-    assert.ok(codes.size > 30);
+    assert.ok(codes.size > 40, `found only ${codes.size} codes`);
     const missing = [...codes].filter((code) => !KNOWN_ERRORS.includes(code));
     assert.deepEqual(missing, []);
   });
@@ -122,25 +155,35 @@ describe('error messages', () => {
   it('falls back to a generic message', () => {
     assert.match(errorMessage('SOMETHING_NEW'), /SOMETHING_NEW/);
   });
+
+  it('labels every role with the same name as the server', () => {
+    for (const [id, role] of Object.entries(ROLE_CATALOG)) assert.equal(ROLE_LABELS[id], role.label);
+  });
 });
 
 describe('rules text', () => {
-  it('credits Davýdov with the documented dates and never calls him a sociologist', () => {
-    const all = JSON.stringify({ RULES_CREDIT, RULES_FULL, RULES_SUMMARY, CLASSIC_RULES });
+  const all = JSON.stringify({ RULES_CREDIT, RULES_FULL, RULES_SUMMARY });
+
+  it('credits Davýdov and Plotkin with the documented dates and never says "sociólogo"', () => {
     assert.match(RULES_CREDIT, /Dmitri Davýdov/);
     assert.match(RULES_CREDIT, /psicólogo/);
+    assert.match(RULES_CREDIT, /Universidad Estatal de Moscú/);
     assert.match(RULES_CREDIT, /1986/);
     assert.match(RULES_CREDIT, /1987/);
+    assert.match(RULES_CREDIT, /Andrew Plotkin/);
+    assert.match(RULES_CREDIT, /1997/);
+    assert.match(RULES_CREDIT, /adaptación propia/);
     assert.doesNotMatch(all, /sociólog/i);
   });
 
-  it('marks the classic variant as not part of the original', () => {
-    assert.match(CLASSIC_RULES.title, /no forma parte del original/);
-    assert.match(CLASSIC_RULES.note, /Werewolf \(Andrew Plotkin, 1997\)/);
+  it('states the fixed night order', () => {
+    const night = RULES_FULL.find((section) => section.title.startsWith('Noche')).items.join(' ');
+    const order = ['Vidente', 'Protector', 'Lobos', 'Lobo alfa', 'Bruja'].map((word) => night.indexOf(word));
+    assert.ok(order.every((pos, i) => pos >= 0 && (i === 0 || pos > order[i - 1])), `order: ${order}`);
   });
 
-  it('states the mafia count table of the original', () => {
-    assert.ok(RULES_FULL.some((s) => s.items.some((i) => i.includes('6–7 jugadores → 2; 8–10 → 3; 11–13 → 4; 14–16 → 5'))));
+  it('does not use commercial product names', () => {
+    assert.doesNotMatch(all, /Thiercelieux|One Night|Traitors/i);
   });
 });
 
@@ -150,7 +193,7 @@ describe('QR code', () => {
   });
 
   it('encodes a join link into a square matrix with a border', () => {
-    const { size, data } = encode('https://atapia9.github.io/mafia-online/jugador.html?sala=ABCDE', { ecc: 'M', border: 2 });
+    const { size, data } = encode('https://atapia9.github.io/hombres-lobos-online/jugador.html?sala=ABCDE', { ecc: 'M', border: 2 });
     assert.equal(data.length, size);
     assert.ok(data.every((row) => row.length === size));
     assert.ok(data[0].every((cell) => cell === false), 'quiet zone');

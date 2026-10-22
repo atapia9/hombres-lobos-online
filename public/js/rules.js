@@ -1,79 +1,78 @@
 // Rules shown in both screens: a short summary and the full version for the modal.
-// Written in our own words; credit to Dmitri Davýdov, creator of the game.
+// Written in our own words for this adaptation (docs/reglas.md is the reference).
 
 export const RULES_CREDIT =
-  'Mafia fue creado por Dmitri Davýdov, psicólogo y entonces estudiante de la Universidad Estatal de Moscú. ' +
-  'Lo concibió en 1986 y la primera partida documentada es de 1987. Este proyecto no reclama ningún derecho sobre el juego.';
+  'Hombres Lobos Online es una adaptación propia, no el juego original. La familia de juegos nace con Mafia, ' +
+  'de Dmitri Davýdov, psicólogo y entonces estudiante de la Universidad Estatal de Moscú: lo concibió en 1986 ' +
+  'y la primera partida documentada es de 1987. Andrew Plotkin creó la variante Werewolf en 1997. ' +
+  'Los roles especiales y las reglas de esta versión son propios; el proyecto no reclama ningún derecho sobre esos juegos.';
 
 export const RULES_SUMMARY = [
-  'Dos equipos: Honestos y Mafia. Al empezar, cada quien ve su rol en privado; los mafiosos se reconocen entre sí.',
-  'De día se discute libremente. Cualquiera puede acusar y pedir votación: si vota «culpable» la mayoría de los vivos sin contar al acusado, queda eliminado.',
-  'Los eliminados no revelan su rol. Puede haber varias eliminaciones en un mismo día.',
-  'La noche se convoca por mayoría. Todos entregan papeleta: los honestos marcan «Honesto» y los mafiosos eligen víctima.',
-  'La víctima muere solo si todos los mafiosos vivos eligen a la misma persona. El número de papeletas de mafia se anuncia.',
-  'Ganan los Honestos si no queda ningún mafioso; gana la Mafia si no queda ningún honesto.',
+  'Dos equipos: Aldeanos y Lobos. Cada quien ve su rol en privado; los lobos se reconocen entre sí.',
+  'Cada noche actúan en orden: Vidente, Protector, Lobos (y el Lobo alfa) y Bruja.',
+  'La víctima de los lobos muere solo si todos los lobos vivos eligen a la misma persona.',
+  'Al amanecer se anuncia quién murió, sin revelar su rol.',
+  'De día se discute y se acusa. En la votación, cada vivo marca a uno de los acusados; sale el más votado. Empate: nadie sale.',
+  'Ganan los Aldeanos si no queda ningún lobo; ganan los Lobos si igualan o superan en número a los demás.',
 ];
 
 export const RULES_FULL = [
   {
     title: 'Jugadores y equipos',
     items: [
-      'Se necesitan al menos 6 jugadores y un narrador, que no juega.',
-      'Hay dos equipos: Honestos y Mafia. En el modo original no hay roles especiales.',
-      'Mafiosos recomendados: 6–7 jugadores → 2; 8–10 → 3; 11–13 → 4; 14–16 → 5. El narrador puede ajustarlo antes de empezar, siempre con menos mafiosos que honestos.',
+      'De 6 a 18 jugadores (lo ideal son 8–12) y un narrador, que no juega.',
+      'Aldeanos contra Lobos. El narrador elige qué roles especiales entran; el resto son Aldeanos.',
+      'Lobos recomendados: un tercio de la mesa. Como máximo, un tercio redondeado hacia arriba.',
+    ],
+  },
+  {
+    title: 'Inicio',
+    items: [
+      'Cada jugador mira su rol en su teléfono, sin que lo vean los demás.',
+      'Los lobos ven quiénes son sus compañeros y quién es el Lobo alfa.',
+    ],
+  },
+  {
+    title: 'Noche (orden fijo)',
+    items: [
+      '1. Vidente: consulta a un jugador y sabe si es lobo o no.',
+      '2. Protector: protege a alguien de los lobos. No puede elegir a la misma persona dos noches seguidas (tampoco a sí mismo).',
+      '3. Lobos: eligen víctima. Muere solo si todos los lobos vivos coinciden; si queda uno, su elección basta. Si no se ponen de acuerdo, el narrador les pide votar de nuevo o declara que no hay víctima.',
+      '3b. Lobo alfa: una vez por partida puede convertir a la víctima en lobo en lugar de matarla. Si la víctima estaba protegida, no hay conversión y no gasta su uso.',
+      '4. Bruja: ve a la víctima (si la hay) y puede salvarla con su poción de vida, o matar a alguien con su poción de muerte. Cada poción sirve una sola vez.',
     ],
   },
   {
     title: 'Amanecer',
     items: [
-      'Cada jugador mira su rol en su teléfono, sin que lo vean los demás.',
-      'Los mafiosos ven quiénes son sus compañeros. Es su única ventaja.',
+      'El narrador anuncia quién murió durante la noche. No se revela el rol (salvo que el narrador lo active).',
+      'Si murió el Cazador, dispara ahora: elige a otro jugador, que muere con él.',
     ],
   },
   {
     title: 'Día',
     items: [
-      'La discusión es libre. Cualquiera puede acusar a otro en cualquier momento y el acusado puede defenderse.',
-      'Cuando alguien pide votación, el narrador la abre. Votan los vivos, salvo el acusado.',
-      'El acusado queda eliminado si vota «culpable» más de la mitad de los vivos sin contarlo a él. No votar cuenta como «no culpable».',
-      'Puede haber varias acusaciones y eliminaciones en un mismo día.',
-      'Los eliminados no revelan su rol hasta el final y ya no pueden ayudar a nadie.',
+      'Discusión libre, con temporizador opcional. Cualquiera puede acusar a otro jugador.',
+      'El narrador abre la votación entre los acusados. Cada vivo marca a uno (nunca a sí mismo) o se abstiene.',
+      'Sale quien tenga más votos. El voto del Alcalde vale doble. Empate: nadie sale, salvo que el Alcalde desempate (opción del narrador).',
+      'El narrador confirma el resultado. Solo hay una eliminación por votación al día.',
     ],
   },
   {
-    title: 'Noche',
+    title: 'Roles especiales',
     items: [
-      'La noche es opcional: se convoca cuando la pide la mayoría de los vivos.',
-      'Cada vivo entrega una papeleta en secreto: los honestos marcan «Honesto» y cada mafioso escribe el nombre de una víctima.',
-      'La víctima muere solo si todos los mafiosos vivos eligen a la misma persona. Si queda un solo mafioso, su elección basta.',
-      'Al amanecer se anuncia quién murió y cuántas papeletas de mafia hubo, lo que revela cuántos mafiosos siguen vivos.',
+      'Cazador: si muere, de noche o por votación, se lleva a otro jugador con él.',
+      'Alcalde: rol secreto; su voto cuenta doble.',
+      'Niña que espía: tras el turno de los lobos sabe a quién eligieron y si coincidieron, pero no quiénes son.',
+      'Bruja: juega con los Aldeanos.',
     ],
   },
   {
     title: 'Victoria',
     items: [
-      'Ganan los Honestos cuando no queda ningún mafioso vivo.',
-      'Gana la Mafia cuando no queda ningún honesto vivo.',
-    ],
-  },
-  {
-    title: 'Puntuación (opcional)',
-    items: [
-      'Si gana la Mafia, cada mafioso vivo suma tantos puntos como honestos había al empezar.',
-      'Si ganan los Honestos, cada honesto vivo suma tantos puntos como honestos sobrevivieron.',
-      'Con «Nueva partida con los mismos jugadores» los puntos se acumulan.',
+      'Ganan los Aldeanos cuando no queda ningún lobo vivo.',
+      'Ganan los Lobos cuando igualan o superan en número a los demás jugadores vivos.',
+      'Si hay un disparo del Cazador pendiente, la victoria se decide después del disparo.',
     ],
   },
 ];
-
-export const CLASSIC_RULES = {
-  title: 'Variante «Clásico con roles» (no forma parte del original)',
-  note: 'Adaptación posterior inspirada en Werewolf (Andrew Plotkin, 1997). Se activa al crear la sala.',
-  items: [
-    'Hay noche en cada ronda, sin necesidad de votarla.',
-    'Los mafiosos ven en vivo lo que eligen sus compañeros, pero la víctima sigue necesitando unanimidad.',
-    'Vidente: cada noche consulta a un jugador y descubre en privado si es de la Mafia o Honesto.',
-    'Doctor: cada noche protege a un jugador (puede ser él mismo, pero no al mismo dos noches seguidas). Si protege a la víctima, nadie muere.',
-    'No se anuncia el número de papeletas de mafia.',
-  ],
-};

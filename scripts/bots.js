@@ -1,12 +1,12 @@
-// Development only: simulated players that join a room and act on their own (R13).
+// Development only: simulated players that join a room and act on their own.
 //
 //   npm run bots -- <ROOM_CODE> [count=3] [--server=http://localhost:3000] [--auto]
 //
-// Bots vote at random, ask for the night when a human already has, and always
-// hand in their night ballot (a random victim if they are mafia), so a game can
-// be tested with only a few real tabs.
-// With --auto they also accuse at random and ask for the night after a vote,
-// so the narrator can run whole days without human players.
+// Bots use their night ability when it is their turn (wolves follow the first
+// pick of the pack), shoot if they are a dead hunter, and vote at random when a
+// vote is open, so a game can be tested with only a few real tabs.
+// With --auto they also accuse at random, so the narrator can run whole days
+// without human players.
 
 import { io } from 'socket.io-client';
 
@@ -17,8 +17,8 @@ const server = flags.server ?? 'http://localhost:3000';
 const count = Number(countArg);
 const auto = 'auto' in flags;
 
-if (!code || !Number.isInteger(count) || count < 1 || count > 19) {
-  console.error('Uso: npm run bots -- <CÓDIGO> [cantidad 1-19] [--server=http://localhost:3000] [--auto]');
+if (!code || !Number.isInteger(count) || count < 1 || count > 18) {
+  console.error('Uso: npm run bots -- <CÓDIGO> [cantidad 1-18] [--server=http://localhost:3000] [--auto]');
   process.exit(1);
 }
 
@@ -72,43 +72,47 @@ function startBot(index) {
   async function act() {
     const state = bot.public;
     const me = bot.me;
-    if (!state || !me || !me.alive || bot.busy) return;
+    if (!state || !me || bot.busy) return;
     bot.busy = true;
     try {
       const alive = state.players.filter((p) => p.alive);
       const others = alive.filter((p) => p.id !== me.id);
+      const pack = new Set(me.partnerIds ?? []);
+
+      if (me.mustShoot) {
+        const target = pick(others);
+        if (target && (await send('hunter:shoot', { targetId: target.id })).ok) log(`disparó a ${target.name}`);
+        return;
+      }
+      if (!me.alive) return;
 
       if (state.phase === 'day') {
         const vote = state.vote;
-        if (vote?.status === 'open' && vote.accusedId !== me.id && me.vote === null) {
-          const guilty = Math.random() < 0.6;
-          if ((await send('day:vote', { guilty })).ok) log(guilty ? 'votó culpable' : 'votó no culpable');
+        if (vote?.status === 'open' && !me.ballot) {
+          const choices = vote.candidateIds.filter((id) => id !== me.id && !pack.has(id));
+          const targetId = Math.random() < 0.85 && choices.length ? pick(choices) : null;
+          if ((await send('day:vote', { targetId })).ok) log(targetId ? `vota contra ${state.players.find((p) => p.id === targetId)?.name}` : 'se abstiene');
         }
-        const pending = state.accusations.some((a) => a.accuserId === me.id);
-        if (auto && !vote && !pending && Math.random() < 0.25) {
-          const target = pick(others.filter((p) => !(me.partnerIds ?? []).includes(p.id)));
+        if (auto && !vote && !state.voteHeld && !me.accusedId && Math.random() < 0.25) {
+          const target = pick(others.filter((p) => !pack.has(p.id)));
           if (target && (await send('day:accuse', { targetId: target.id })).ok) log(`acusa a ${target.name}`);
-        }
-        const requests = state.nightRequests;
-        const votedToday = state.history.some((entry) => entry.type === 'vote' && entry.round === state.round);
-        if (requests && !me.nightRequested && (requests.count > 0 || (auto && votedToday))) {
-          if ((await send('night:request', { wanted: true })).ok) log('pidió la noche');
         }
       }
 
-      if (state.phase === 'night') {
-        if ((me.role === 'seer' || me.role === 'doctor') && !me.abilityTargetId) {
-          const choices = me.role === 'seer'
-            ? others
-            : alive.filter((p) => p.id !== me.doctorLastTargetId);
-          const target = pick(choices);
-          if (target && (await send('night:ability', { targetId: target.id })).ok) log(`usó su habilidad con ${target.name}`);
-        } else if (me.role === 'mafia' && !me.ballotSubmitted) {
-          const target = pick(others.filter((p) => !me.partnerIds.includes(p.id)));
-          if (target && (await send('night:submit', { targetId: target.id })).ok) log(`eligió a ${target.name}`);
-        } else if ((me.role === 'honest') && !me.ballotSubmitted) {
-          if ((await send('night:submit', { targetId: null })).ok) log('entregó «Honesto»');
+      const night = me.night;
+      if (state.phase === 'night' && night?.turn) {
+        let payload = null;
+        if (night.step === 'seer') payload = { targetId: pick(others)?.id };
+        if (night.step === 'protector') payload = { targetId: pick(alive.filter((p) => p.id !== me.protectorLastTargetId))?.id };
+        if (night.step === 'wolves' && !night.wolfPicks?.[me.id]) {
+          const chosen = Object.values(night.wolfPicks ?? {}).find(Boolean);
+          payload = { targetId: chosen ?? pick(others.filter((p) => !pack.has(p.id)))?.id };
         }
+        if (night.step === 'alpha') payload = { convert: Math.random() < 0.3 };
+        if (night.step === 'witch') {
+          payload = { heal: Boolean(me.potions?.heal && night.victimId && Math.random() < 0.5), poisonTargetId: null };
+        }
+        if (payload && (await send('night:act', payload)).ok) log(`actúa de noche (${night.step})`);
       }
     } finally {
       bot.busy = false;
