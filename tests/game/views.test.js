@@ -14,22 +14,7 @@ import {
   started,
   voteOut,
 } from '../helpers.js';
-
-// Keys that carry hidden information. Before the game ends they may only
-// appear inside `me` (the player's own secrets) — never in the public part.
-const SECRET_KEYS = new Set([
-  'role', 'team', 'partnerIds', 'partnerPicks', 'seerResults', 'doctorLastTargetId',
-  'abilityTargetId', 'ballotTargetId', 'ballots', 'abilities', 'saved', 'intendedVictimId',
-  'log', 'derived', 'initial', 'config',
-]);
-
-function secretPaths(value, path = '') {
-  if (value === null || typeof value !== 'object') return [];
-  return Object.entries(value).flatMap(([key, child]) => {
-    const here = path ? `${path}.${key}` : key;
-    return [...(SECRET_KEYS.has(key) ? [here] : []), ...secretPaths(child, here)];
-  });
-}
+import { secretPaths } from '../leaks.js';
 
 /** Asserts that no view leaks hidden information, for the room and every player. */
 function assertNoLeaks(state, label) {
